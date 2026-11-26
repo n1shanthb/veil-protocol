@@ -35,10 +35,12 @@ jobs:
         run: gno test -v -root-dir /tmp/gno ./gno/... ./examples/...
 
       - name: Run Veil Forge CLI smoke test
+        env:
+          GNO_ROOT: /tmp/gno
         run: |
-          node cli/veil.js inspect circuits/build/cubic_check/verification_key.json
-          node cli/veil.js generate circuits/build/cubic_check/verification_key.json --out examples/_ci_smoke --pkgpath gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/ci_smoke --core gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2
-          node cli/veil.js test --dir examples/_ci_smoke --proof circuits/build/cubic_check/proof.json --public circuits/build/cubic_check/public.json
+          node cli/veil.js inspect circuits/semaphore/vk_depth10.json
+          node cli/veil.js generate circuits/semaphore/vk_depth10.json --out examples/_ci_smoke --pkgpath gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/ci_smoke --core gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2
+          node cli/veil.js test --dir examples/_ci_smoke --proof circuits/semaphore/proof_depth10.json --public circuits/semaphore/public_depth10.json
           rm -rf examples/_ci_smoke
 
       - name: Build and test Veil TypeScript SDK
