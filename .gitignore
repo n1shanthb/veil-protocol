@@ -1,0 +1,26 @@
+# Private keys, mnemonics, and local wallet files
+*.key
+*.pem
+*.mnemonic
+.env
+.env.*
+gnokey-home/
+
+# Relayer runtime state & logs
+relayer/state*.json
+*.log
+
+# Development-only trusted setup and build artifacts
+circuits/build/
+!circuits/build/vectors.json
+
+# Build outputs & test artifacts
+sdk/dist/
+apps/web/dist/
+apps/web/playwright-report/
+apps/web/test-results/
+
+# Node / OS / IDE
+node_modules/
+.DS_Store
+Thumbs.db

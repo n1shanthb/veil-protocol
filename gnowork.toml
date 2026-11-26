@@ -1,0 +1,11 @@
+members = [
+    "./gno/p/groth16",
+    "./gno/p/semaphore",
+    "./gno/r/veil_verifier",
+    "./gno/r/veil_vote",
+    "./gno/r/veil_registry",
+    "./examples/multiplier_verifier",
+    "./examples/sum_of_squares_verifier",
+    "./examples/semaphore_depth10_verifier",
+    "./examples/cubic_check_verifier",
+]
