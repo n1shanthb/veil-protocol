@@ -1,6 +1,8 @@
 package veil_vote
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2"
@@ -164,4 +166,97 @@ func TestAdversarialVotingSuite(cur realm, t *testing.T) {
 	if err := semaphore.VerifyAndConsume(vks, groups, semaphore.NewNullifierSet(), 1, 10, rBytes, nBytes, semaphore.Uint64ToBE32(1), semaphore.DomainScopeFull("onyx-1", "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3", 1, 42), pf); err == nil {
 		t.Fatalf("expected error for cross-network replay")
 	}
+}
+
+func TestResourceLimitsAndPagination(cur realm, t *testing.T) {
+	testing.SetRealm(testing.NewUserRealm(admin))
+
+	// Unsupported depth rejected at realm boundary.
+	assertPanics(t, "unsupported depth 20", func() {
+		CreateGroup(cross(cur), 500, 20, admin)
+	})
+
+	// Empty and oversized titles rejected.
+	assertPanics(t, "empty title", func() {
+		CreatePoll(cross(cur), 500, 1, "   ", "Yes,No", 0, 0)
+	})
+	assertPanics(t, "oversized title", func() {
+		CreatePoll(cross(cur), 500, 1, strings.Repeat("t", MaxTitleLen+1), "Yes,No", 0, 0)
+	})
+
+	// Max title & 32 options accepted; 33 options & oversized option rejected.
+	var opts32 []string
+	for i := 0; i < MaxOptions; i++ {
+		opts32 = append(opts32, "opt"+strconv.Itoa(i))
+	}
+	CreatePoll(cross(cur), 501, 1, strings.Repeat("t", MaxTitleLen), strings.Join(opts32, ","), 0, 0)
+	assertPanics(t, "33 options", func() {
+		CreatePoll(cross(cur), 502, 1, "Too many", strings.Join(append(opts32, "extra"), ","), 0, 0)
+	})
+	assertPanics(t, "oversized option", func() {
+		CreatePoll(cross(cur), 503, 1, "Long opt", strings.Repeat("o", MaxOptionLen+1)+",No", 0, 0)
+	})
+
+	// Large membership group (1024 max for depth 10), multi-page snapshot reconstruction,
+	// and 1025th member rejection.
+	CreateGroup(cross(cur), 500, SupportedDepth, admin)
+	for i := 0; i < MaxGroupMembers; i++ {
+		hexC := strings.Repeat("00", 30) + toHex2(byte(i>>8)) + toHex2(byte(i&0xff))
+		if i == 0 {
+			hexC = strings.Repeat("00", 31) + "01"
+		}
+		if i == 1 {
+			hexC = strings.Repeat("00", 30) + "0400"
+		}
+		AddMember(cross(cur), 500, hexC)
+	}
+	assertPanics(t, "1025th member exceeds depth-10 capacity", func() {
+		AddMember(cross(cur), 500, strings.Repeat("00", 30)+"0500")
+	})
+	if GetGroupMemberCount(500) != MaxGroupMembers {
+		t.Fatalf("expected %d members, got %d", MaxGroupMembers, GetGroupMemberCount(500))
+	}
+	PublishRoot(cross(cur), 500, strings.Repeat("00", 31)+"aa")
+	CreatePoll(cross(cur), 504, 500, "Full 1024 Snapshot Poll", "Yes,No", 0, 0)
+	if GetPollSnapshotCount(504) != MaxGroupMembers {
+		t.Fatalf("expected snapshot count %d, got %d", MaxGroupMembers, GetPollSnapshotCount(504))
+	}
+
+	// Reconstruct all 1024 commitments across 11 pages (100 per page).
+	var collected []string
+	for offset := 0; offset < MaxGroupMembers; offset += MaxPageSize {
+		page := GetPollCommitmentsPaged(504, offset, MaxPageSize)
+		if page == "" {
+			t.Fatalf("unexpected empty page at offset %d", offset)
+		}
+		collected = append(collected, strings.Split(page, "\n")...)
+	}
+	if len(collected) != MaxGroupMembers {
+		t.Fatalf("expected %d paginated commitments, got %d", MaxGroupMembers, len(collected))
+	}
+	if GetPollCommitmentsPaged(504, MaxGroupMembers, MaxPageSize) != "" {
+		t.Fatalf("expected empty page past end")
+	}
+
+	// Invalid pagination offsets/limits safely return empty without allocation.
+	if GetPollCommitmentsPaged(504, -1, 10) != "" {
+		t.Fatalf("expected empty for negative offset")
+	}
+	if GetPollCommitmentsPaged(504, 0, 0) != "" {
+		t.Fatalf("expected empty for zero limit")
+	}
+	if GetPollCommitmentsPaged(504, 0, MaxPageSize+1) != "" {
+		t.Fatalf("expected empty for oversized limit")
+	}
+	if ListPollsPaged(-1, 10) != "" {
+		t.Fatalf("expected empty for negative poll page")
+	}
+	if ListPollsPaged(0, 10) == "" {
+		t.Fatalf("expected non-empty poll list")
+	}
+}
+
+func toHex2(b byte) string {
+	const hexDigits = "0123456789abcdef"
+	return string([]byte{hexDigits[b>>4], hexDigits[b&0x0f]})
 }
