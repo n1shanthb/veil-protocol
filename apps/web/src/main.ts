@@ -1,0 +1,677 @@
+import {
+  CORE_PKG_PATH,
+  ONYX_RPC,
+  VOTE_REALM_PATH,
+  Group,
+  Identity,
+  encodePublicInputs,
+  generateGnoVerifierSource,
+  generateProof,
+  deriveCanonicalScope,
+  semaphoreHashHex,
+  snarkjs,
+  unpackGroth16Proof,
+  validateAndConvertProof,
+  validateAndConvertVK,
+  verifyProof,
+} from "./veil-browser";
+
+type TabId = "vote" | "circuits" | "forge" | "playground" | "deployments" | "primitives";
+
+interface PollState {
+  id: number;
+  groupId: number;
+  title: string;
+  options: string[];
+  tallies: number[];
+  closed: boolean;
+}
+
+const DEFAULT_IDENTITIES = [
+  new Identity("veil-phase2-member-0"),
+  new Identity("veil-phase2-member-1"),
+  new Identity("veil-phase2-member-2"),
+];
+
+const state = {
+  tab: "vote" as TabId,
+  mode: "local" as "local" | "onyx",
+  onyxHeight: "checking...",
+  relayerUrl: "http://127.0.0.1:8787",
+  // Vote state (Local Dev Mode mirrors veil_vote/v1 semantics; Onyx Mode builds real tx calls)
+  identitySecret: "veil-phase2-member-0",
+  identity: DEFAULT_IDENTITIES[0],
+  groups: [
+    {
+      id: 1,
+      depth: 10,
+      members: DEFAULT_IDENTITIES.map((i) => i.commitment.toString()),
+    },
+  ],
+  polls: [
+    {
+      id: 42,
+      groupId: 1,
+      title: "Onyx Protocol Parameter Proposal #42",
+      options: ["Abstain", "Yes", "No"],
+      tallies: [0, 0, 0],
+      closed: false,
+    },
+    {
+      id: 43,
+      groupId: 1,
+      title: "Treasury Grant Allocation #43",
+      options: ["Abstain", "Approve", "Reject"],
+      tallies: [0, 0, 0],
+      closed: false,
+    },
+  ] as PollState[],
+  spentNullifiers: new Set<string>(),
+  selectedPollId: 42,
+  selectedOption: 1,
+  lastVoteProof: null as null | {
+    pollId: number;
+    optionIndex: number;
+    rootHex: string;
+    nullifierHex: string;
+    a: string;
+    b: string;
+    c: string;
+    upstreamValid: boolean;
+  },
+  voteStatus: "",
+  adminStatus: "",
+  // Forge state
+  forgePkgPath: "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/custom_verifier",
+  forgeVkJson: "",
+  forgeOutput: "",
+  forgeError: "",
+  // Playground state
+  pgVkJson: "",
+  pgProofJson: "",
+  pgPublicJson: "",
+  pgOutput: "",
+  pgError: "",
+  pgVerifyBadge: "",
+};
+
+function currentGroup() {
+  return state.groups[0];
+}
+
+function reconstructRoot(members: string[]) {
+  const g = new Group(members.map((m) => BigInt(m)));
+  return {
+    group: g,
+    rootDec: g.root.toString(),
+    rootHex: BigInt(g.root).toString(16).padStart(64, "0"),
+  };
+}
+
+async function refreshOnyxStatus() {
+  try {
+    const r = await fetch(`${ONYX_RPC.replace(":443", "")}/status`);
+    const j = await r.json();
+    state.onyxHeight = `${j.result.node_info.network} @ #${j.result.sync_info.latest_block_height} (${j.result.build_version})`;
+  } catch {
+    state.onyxHeight = "unreachable";
+  }
+  render();
+}
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function angularLogo() {
+  return `<svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <path d="M4 6L16 28L28 6H22.5L16 18.5L9.5 6H4Z" fill="#f4f4f5"/>
+    <path d="M12.5 6L16 12.5L19.5 6H12.5Z" fill="#71717a"/>
+  </svg>`;
+}
+
+function renderVoteTab(): string {
+  const poll = state.polls.find((p) => p.id === state.selectedPollId) || state.polls[0];
+  const grp = currentGroup();
+  const { rootHex } = reconstructRoot(grp.members);
+  const commitmentHex = BigInt(state.identity.commitment).toString(16).padStart(64, "0");
+  const isMember = grp.members.includes(state.identity.commitment.toString());
+
+  return `
+  <div class="grid-2">
+    <div class="card">
+      <h2>1. Local Semaphore v4 Identity</h2>
+      <p class="muted">Secrets stay strictly inside browser memory. Only your Poseidon commitment is public.</p>
+      <label>Identity Seed / Secret (Local Only)</label>
+      <input id="id-secret" value="${esc(state.identitySecret)}" />
+      <div class="row">
+        <button class="primary" id="btn-restore-id">Restore Identity</button>
+        <button class="secondary" id="btn-new-id">Generate Random Identity</button>
+      </div>
+      <label>Identity Commitment (Hex)</label>
+      <pre>${commitmentHex}</pre>
+      <div class="badge ${isMember ? "ok" : "warn"}">
+        ${isMember ? "REGISTERED IN GROUP #1" : "NOT IN GROUP #1 (Use Admin Panel to register)"}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2. Group #1 &amp; LeanIMT Root</h2>
+      <p class="muted">Reconstructed locally from ${grp.members.length} registered commitments (depth ${grp.depth}).</p>
+      <label>Reconstructed Merkle Root (Hex)</label>
+      <pre>${rootHex}</pre>
+      <label>Registered Commitments (${grp.members.length})</label>
+      <pre>${grp.members.map((m, i) => `[${i}] ${BigInt(m).toString(16).padStart(64, "0")}`).join("\n")}</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Cast Anonymous Vote (${state.mode === "local" ? "LOCAL DEV SIMULATION" : "ONYX TESTNET"})</h2>
+    <p class="muted">
+      V1 Privacy Notice: Group membership is proven in zero-knowledge; the selected vote option is public.
+    </p>
+    <div class="grid-2">
+      <div>
+        <label>Select Poll</label>
+        <select id="poll-select">
+          ${state.polls
+            .map(
+              (p) =>
+                `<option value="${p.id}" ${p.id === poll.id ? "selected" : ""}>#${p.id} — ${esc(p.title)} ${p.closed ? "(CLOSED)" : ""}</option>`
+            )
+            .join("")}
+        </select>
+
+        <label>Select Vote Option (Public)</label>
+        <select id="opt-select">
+          ${poll.options
+            .map(
+              (o, i) =>
+                `<option value="${i}" ${i === state.selectedOption ? "selected" : ""}>[${i}] ${esc(o)}</option>`
+            )
+            .join("")}
+        </select>
+
+        <div class="row">
+          <button class="primary" id="btn-gen-proof">Generate Semaphore Proof (Client-Side)</button>
+          ${
+            state.lastVoteProof
+              ? `<button class="secondary" id="btn-submit-local">Submit Vote (${state.mode === "local" ? "Local State" : "Simulate"})</button>
+                 <button class="secondary" id="btn-submit-relayer">Submit via Sponsored Relayer</button>`
+              : ""
+          }
+        </div>
+        ${state.voteStatus ? `<div class="status-box">${esc(state.voteStatus)}</div>` : ""}
+      </div>
+
+      <div>
+        <label>Current Poll Tallies</label>
+        <table>
+          <thead><tr><th>Option</th><th>Votes</th></tr></thead>
+          <tbody>
+            ${poll.options
+              .map((o, i) => `<tr><td>[${i}] ${esc(o)}</td><td>${poll.tallies[i]}</td></tr>`)
+              .join("")}
+          </tbody>
+        </table>
+        ${
+          state.lastVoteProof
+            ? `<label>Generated Proof Artifacts (Public Only)</label>
+               <pre>Nullifier: ${state.lastVoteProof.nullifierHex}
+Upstream verifyProof: ${state.lastVoteProof.upstreamValid}
+gnokey maketx call \\
+  -pkgpath "${VOTE_REALM_PATH}" \\
+  -func Vote \\
+  -args ${state.lastVoteProof.pollId} -args 10 \\
+  -args ${state.lastVoteProof.rootHex} \\
+  -args ${state.lastVoteProof.nullifierHex} \\
+  -args ${state.lastVoteProof.optionIndex} \\
+  -args ${state.lastVoteProof.a.slice(0, 24)}... \\
+  -args ${state.lastVoteProof.b.slice(0, 24)}... \\
+  -args ${state.lastVoteProof.c.slice(0, 24)}... \\
+  -chainid onyx-1 -remote ${ONYX_RPC} &lt;key&gt;</pre>`
+            : ""
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>4. Group &amp; Poll Administration</h2>
+    <div class="grid-2">
+      <div>
+        <label>Register Commitment Hex (64 hex chars)</label>
+        <input id="admin-comm" value="${commitmentHex}" />
+        <button class="secondary" id="btn-admin-add-member">Add Member &amp; Publish Root</button>
+      </div>
+      <div>
+        <label>Create New Poll Title / Options CSV</label>
+        <input id="admin-poll-title" value="Proposal #44" />
+        <input id="admin-poll-opts" value="Abstain,For,Against" style="margin-top:6px" />
+        <button class="secondary" id="btn-admin-create-poll">Create Poll</button>
+      </div>
+    </div>
+    ${state.adminStatus ? `<div class="status-box">${esc(state.adminStatus)}</div>` : ""}
+  </div>`;
+}
+
+function renderCircuitsTab(): string {
+  return `
+  <div class="card">
+    <h2>Supported Circuit Library</h2>
+    <p class="muted">All circuits below verify through the identical Veil Core engine (${CORE_PKG_PATH}) with zero Core modifications.</p>
+    <table>
+      <thead><tr><th>Circuit</th><th>Curve / Protocol</th><th>Public Inputs</th><th>Setup Provenance</th><th>Verified GnoVM Gas</th></tr></thead>
+      <tbody>
+        <tr><td>multiplier.circom</td><td>BN254 / Groth16</td><td>1 ([c])</td><td>Dev-Only (pot12)</td><td>2,888,411 (net Verify)</td></tr>
+        <tr><td>sum_of_squares.circom</td><td>BN254 / Groth16</td><td>2 ([ok, target])</td><td>Dev-Only (pot12)</td><td>3,029,774 (net Verify)</td></tr>
+        <tr><td>semaphore-10 (v4.13.0)</td><td>BN254 / Groth16</td><td>4 ([root, nullifier, h(msg), h(scope)])</td><td>Ceremony-Backed (PSE)</td><td>3,320,996 (net Verify)</td></tr>
+        <tr><td>external/cubic_check.circom</td><td>BN254 / Groth16</td><td>1 ([out])</td><td>Dev-Only (3rd-party example)</td><td>~2.89M (net Verify)</td></tr>
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function renderForgeTab(): string {
+  return `
+  <div class="card">
+    <h2>Veil Forge — snarkjs VK to Gno Verifier Generator</h2>
+    <p class="muted">Paste any snarkjs Groth16/BN254 <code>verification_key.json</code>. Coordinates are validated (&lt; p), G2 is converted to EIP-197 imaginary-first order, and the generated realm imports Veil Core.</p>
+    <label>Target Gno Package Path</label>
+    <input id="forge-pkg" value="${esc(state.forgePkgPath)}" />
+    <label>verification_key.json</label>
+    <textarea id="forge-vk" placeholder='{"protocol":"groth16","curve":"bn128",...}'>${esc(state.forgeVkJson)}</textarea>
+    <div class="row">
+      <button class="primary" id="btn-forge-gen">Validate &amp; Generate Gno Verifier</button>
+      ${state.forgeOutput ? `<button class="secondary" id="btn-forge-export">Export Deployable Bundle (.json)</button>` : ""}
+    </div>
+    ${state.forgeError ? `<div class="status-box" style="color:var(--status-err)">${esc(state.forgeError)}</div>` : ""}
+    ${state.forgeOutput ? `<label>Generated verifier.gno</label><pre>${esc(state.forgeOutput)}</pre>` : ""}
+  </div>`;
+}
+
+function renderPlaygroundTab(): string {
+  return `
+  <div class="card">
+    <h2>Proof Playground — Browser Verification &amp; Gno Encoding</h2>
+    <p class="muted">Import <code>verification_key.json</code>, <code>proof.json</code>, and <code>public.json</code> to run <strong>real browser-side snarkjs Groth16 verification</strong>, inspect EIP-197 Gno encodings, and generate GnoVM / Onyx commands.</p>
+    <label>verification_key.json (required for browser snarkjs verification)</label>
+    <textarea id="pg-vk" placeholder='{"protocol":"groth16","curve":"bn128",...}'>${esc(state.pgVkJson)}</textarea>
+    <div class="grid-2">
+      <div>
+        <label>proof.json</label>
+        <textarea id="pg-proof" placeholder='{"pi_a":[...],"pi_b":[...],"pi_c":[...]}'>${esc(state.pgProofJson)}</textarea>
+      </div>
+      <div>
+        <label>public.json</label>
+        <textarea id="pg-public" placeholder='["91"]'>${esc(state.pgPublicJson)}</textarea>
+      </div>
+    </div>
+    <button class="primary" id="btn-pg-encode">Verify in Browser (snarkjs) &amp; Encode for Gno</button>
+    ${state.pgVerifyBadge ? `<div style="margin-top:10px">${state.pgVerifyBadge}</div>` : ""}
+    ${state.pgError ? `<div class="status-box" style="color:var(--status-err)">${esc(state.pgError)}</div>` : ""}
+    ${state.pgOutput ? `<label>Verification &amp; Gno Serialization Output</label><pre>${esc(state.pgOutput)}</pre>` : ""}
+  </div>`;
+}
+
+function renderDeploymentsTab(): string {
+  return `
+  <div class="card">
+    <h2>Onyx Testnet Deployments &amp; GPAS Status</h2>
+    <p class="muted">Real on-chain AddPackage broadcasts on <code>onyx-1</code>. Packages remain in GPAS review queue until activated via <code>MsgEnablePackage</code>.</p>
+    <table>
+      <thead><tr><th>Package Path</th><th>Version</th><th>Height</th><th>Tx Hash</th><th>Gas Used</th><th>GPAS Status</th></tr></thead>
+      <tbody>
+        <tr><td>gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2</td><td>Hardened Core</td><td>1426060</td><td>U61xv6bC85z9VopmocG5DV7iumLhEOEtCLC8TEESZPU=</td><td>59,348,160</td><td>in review queue</td></tr>
+        <tr><td>gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v1</td><td>Primitives</td><td>1426062</td><td>mxqRc626QF0xkVDz4wq7lPdBqO7W4C21EHvy1znI4Uc=</td><td>23,547,033</td><td>in review queue</td></tr>
+        <tr><td>gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v1</td><td>Vote Realm</td><td>1426064</td><td>VtbiZcm4THMczuVCQ0KRuevbXQgAsod5cNOh0zPLaXo=</td><td>29,954,182</td><td>in review queue</td></tr>
+        <tr><td>gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16</td><td>Phase 0</td><td>1422595</td><td>Lzw58UhljTFqrBYQIsSZdFwhdUo8RaHfm0ky9SjVM6o=</td><td>31,255,371</td><td>in review queue</td></tr>
+        <tr><td>gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_verifier</td><td>Phase 0</td><td>1422602</td><td>N1Z0qlZmpyleq3g3hs95+ss/d9Gx+FRz3SmEiDelvBo=</td><td>10,662,864</td><td>in review queue</td></tr>
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function renderPrimitivesTab(): string {
+  return `
+  <div class="card">
+    <h2>Veil Primitives (<code>semaphore/v1</code>)</h2>
+    <p class="muted">Reusable Gno building blocks for Semaphore v4 membership, domain-separated scopes, and atomic nullifier tracking.</p>
+    <pre>import (
+  "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2"
+  "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v1"
+)
+
+// Canonical Semaphore v4 hash: uint256(keccak256(toBeHex(val, 32))) >> 8
+msgHash, _ := semaphore.HashToField(semaphore.Uint64ToBE32(1))
+
+// Domain-separated scope across network, app, group, and poll
+scope := semaphore.DomainScopeFull("onyx-1", "my_app/v1", groupID, pollID)
+
+// Atomic verification + nullifier consumption
+err := semaphore.VerifyAndConsume(vks, groups, nullifiers, groupID, 10, root, nullifier, rawMsg, rawScope, proof)</pre>
+  </div>`;
+}
+
+function render() {
+  const app = document.getElementById("app")!;
+  const tabContent =
+    state.tab === "vote"
+      ? renderVoteTab()
+      : state.tab === "circuits"
+        ? renderCircuitsTab()
+        : state.tab === "forge"
+          ? renderForgeTab()
+          : state.tab === "playground"
+            ? renderPlaygroundTab()
+            : state.tab === "deployments"
+              ? renderDeploymentsTab()
+              : renderPrimitivesTab();
+
+  app.innerHTML = `
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        ${angularLogo()}
+        <div>
+          <div class="brand-title">VEIL PROTOCOL</div>
+          <div class="brand-sub">Zero-Knowledge Developer Infrastructure for Gno.land</div>
+        </div>
+      </div>
+      <div class="mode-bar">
+        <span class="badge ${state.mode === "local" ? "warn" : "ok"}">
+          ${state.mode === "local" ? "MODE: LOCAL DEV" : "MODE: ONYX TESTNET"}
+        </span>
+        <span class="badge">RPC: ${esc(state.onyxHeight)}</span>
+        <button class="secondary" id="btn-toggle-mode" style="margin-top:0">
+          Switch to ${state.mode === "local" ? "Onyx Mode" : "Local Dev Mode"}
+        </button>
+      </div>
+    </header>
+
+    <nav class="nav">
+      ${(
+        [
+          ["vote", "Veil Vote (Showcase)"],
+          ["circuits", "Circuit Library"],
+          ["forge", "Forge"],
+          ["playground", "Proof Playground"],
+          ["deployments", "Deployments"],
+          ["primitives", "Primitives"],
+        ] as Array<[TabId, string]>
+      )
+        .map(
+          ([id, label]) =>
+            `<button class="${state.tab === id ? "active" : ""}" data-tab="${id}">${label}</button>`
+        )
+        .join("")}
+    </nav>
+
+    <main>${tabContent}</main>
+  </div>`;
+
+  bindEvents();
+}
+
+function bindEvents() {
+  document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((b) => {
+    b.onclick = () => {
+      state.tab = b.dataset.tab as TabId;
+      render();
+    };
+  });
+
+  const toggle = document.getElementById("btn-toggle-mode");
+  if (toggle) {
+    toggle.onclick = () => {
+      state.mode = state.mode === "local" ? "onyx" : "local";
+      render();
+    };
+  }
+
+  const restoreBtn = document.getElementById("btn-restore-id");
+  if (restoreBtn) {
+    restoreBtn.onclick = () => {
+      const val = (document.getElementById("id-secret") as HTMLInputElement).value;
+      state.identitySecret = val;
+      state.identity = new Identity(val);
+      state.lastVoteProof = null;
+      render();
+    };
+  }
+
+  const newIdBtn = document.getElementById("btn-new-id");
+  if (newIdBtn) {
+    newIdBtn.onclick = () => {
+      const id = new Identity();
+      state.identitySecret = "random-ephemeral-identity";
+      state.identity = id;
+      state.lastVoteProof = null;
+      render();
+    };
+  }
+
+  const pollSel = document.getElementById("poll-select") as HTMLSelectElement | null;
+  if (pollSel) {
+    pollSel.onchange = () => {
+      state.selectedPollId = Number(pollSel.value);
+      state.lastVoteProof = null;
+      render();
+    };
+  }
+
+  const optSel = document.getElementById("opt-select") as HTMLSelectElement | null;
+  if (optSel) {
+    optSel.onchange = () => {
+      state.selectedOption = Number(optSel.value);
+      render();
+    };
+  }
+
+  const genProofBtn = document.getElementById("btn-gen-proof");
+  if (genProofBtn) {
+    genProofBtn.onclick = async () => {
+      try {
+        state.voteStatus = "Generating client-side Semaphore v4 Groth16 proof...";
+        render();
+        const grp = currentGroup();
+        const { group } = reconstructRoot(grp.members);
+        const pollId = state.selectedPollId;
+        const opt = state.selectedOption;
+        const network = state.mode === "local" ? "dev" : "onyx-1";
+        const scopeHex = deriveCanonicalScope(network, VOTE_REALM_PATH, grp.id, pollId);
+        const semProof = await generateProof(state.identity, group, BigInt(opt), BigInt("0x" + scopeHex), 10);
+        const upstreamValid = await verifyProof(semProof);
+        const unpacked = unpackGroth16Proof(semProof.points);
+        const enc = validateAndConvertProof(unpacked);
+        state.lastVoteProof = {
+          pollId,
+          optionIndex: opt,
+          rootHex: BigInt(semProof.merkleTreeRoot).toString(16).padStart(64, "0"),
+          nullifierHex: BigInt(semProof.nullifier).toString(16).padStart(64, "0"),
+          a: enc.a,
+          b: enc.b,
+          c: enc.c,
+          upstreamValid,
+        };
+        state.voteStatus = `Client-side proof generated. Upstream verifyProof=${upstreamValid}. Ready to submit.`;
+      } catch (e: any) {
+        state.voteStatus = `Proof generation failed: ${e.message}`;
+      }
+      render();
+    };
+  }
+
+  const submitLocalBtn = document.getElementById("btn-submit-local");
+  if (submitLocalBtn) {
+    submitLocalBtn.onclick = () => {
+      const p = state.lastVoteProof;
+      if (!p) return;
+      const poll = state.polls.find((x) => x.id === p.pollId);
+      if (!poll) return;
+      if (poll.closed) {
+        state.voteStatus = "Rejected: poll is closed.";
+        return render();
+      }
+      const key = `${p.pollId}:${p.nullifierHex}`;
+      if (state.spentNullifiers.has(key)) {
+        state.voteStatus = "Rejected: duplicate vote (nullifier already spent in this poll).";
+        return render();
+      }
+      if (!p.upstreamValid) {
+        state.voteStatus = "Rejected: invalid proof.";
+        return render();
+      }
+      state.spentNullifiers.add(key);
+      poll.tallies[p.optionIndex]++;
+      state.voteStatus = `LOCAL DEV: Vote recorded for option [${p.optionIndex}] in Poll #${p.pollId}.`;
+      render();
+    };
+  }
+
+  const submitRelayerBtn = document.getElementById("btn-submit-relayer");
+  if (submitRelayerBtn) {
+    submitRelayerBtn.onclick = async () => {
+      const p = state.lastVoteProof;
+      if (!p) return;
+      try {
+        const res = await fetch(`${state.relayerUrl}/api/relay/vote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pollId: p.pollId,
+            depth: 10,
+            optionIndex: p.optionIndex,
+            rootHex: p.rootHex,
+            nullifierHex: p.nullifierHex,
+            a: p.a,
+            b: p.b,
+            c: p.c,
+          }),
+        });
+        const j = await res.json();
+        state.voteStatus = `Relayer (${res.status}): ${JSON.stringify(j)}`;
+      } catch (e: any) {
+        state.voteStatus = `Relayer unreachable at ${state.relayerUrl}: ${e.message}`;
+      }
+      render();
+    };
+  }
+
+  const addMemberBtn = document.getElementById("btn-admin-add-member");
+  if (addMemberBtn) {
+    addMemberBtn.onclick = () => {
+      const hex = (document.getElementById("admin-comm") as HTMLInputElement).value.trim();
+      try {
+        const dec = BigInt("0x" + hex.replace(/^0x/, "")).toString();
+        const grp = currentGroup();
+        if (grp.members.includes(dec)) {
+          state.adminStatus = "Rejected: duplicate commitment already in Group #1.";
+        } else {
+          grp.members.push(dec);
+          const { rootHex } = reconstructRoot(grp.members);
+          state.adminStatus = `Added member to Group #1. New root: ${rootHex}`;
+        }
+      } catch {
+        state.adminStatus = "Invalid 32-byte commitment hex.";
+      }
+      render();
+    };
+  }
+
+  const createPollBtn = document.getElementById("btn-admin-create-poll");
+  if (createPollBtn) {
+    createPollBtn.onclick = () => {
+      const title = (document.getElementById("admin-poll-title") as HTMLInputElement).value.trim();
+      const opts = (document.getElementById("admin-poll-opts") as HTMLInputElement).value
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (opts.length < 2) {
+        state.adminStatus = "Poll requires at least 2 options.";
+      } else {
+        const nextId = Math.max(...state.polls.map((p) => p.id)) + 1;
+        state.polls.push({
+          id: nextId,
+          groupId: 1,
+          title: title || `Proposal #${nextId}`,
+          options: opts,
+          tallies: new Array(opts.length).fill(0),
+          closed: false,
+        });
+        state.adminStatus = `Created Poll #${nextId} (${opts.length} options).`;
+      }
+      render();
+    };
+  }
+
+  const forgeBtn = document.getElementById("btn-forge-gen");
+  if (forgeBtn) {
+    forgeBtn.onclick = () => {
+      state.forgePkgPath = (document.getElementById("forge-pkg") as HTMLInputElement).value.trim();
+      state.forgeVkJson = (document.getElementById("forge-vk") as HTMLTextAreaElement).value;
+      state.forgeError = "";
+      state.forgeOutput = "";
+      try {
+        const vk = JSON.parse(state.forgeVkJson);
+        const conv = validateAndConvertVK(vk);
+        state.forgeOutput = generateGnoVerifierSource(state.forgePkgPath, conv);
+      } catch (e: any) {
+        state.forgeError = e.message;
+      }
+      render();
+    };
+  }
+
+  const forgeExportBtn = document.getElementById("btn-forge-export");
+  if (forgeExportBtn) {
+    forgeExportBtn.onclick = () => {
+      const bundle = {
+        "gnomod.toml": `module = "${state.forgePkgPath}"\ngno = "0.9"\n`,
+        "verifier.gno": state.forgeOutput,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "veil-verifier-package.json";
+      a.click();
+    };
+  }
+
+  const pgBtn = document.getElementById("btn-pg-encode");
+  if (pgBtn) {
+    pgBtn.onclick = async () => {
+      state.pgVkJson = (document.getElementById("pg-vk") as HTMLTextAreaElement).value;
+      state.pgProofJson = (document.getElementById("pg-proof") as HTMLTextAreaElement).value;
+      state.pgPublicJson = (document.getElementById("pg-public") as HTMLTextAreaElement).value;
+      state.pgError = "";
+      state.pgOutput = "";
+      state.pgVerifyBadge = "";
+      try {
+        const vkObj = JSON.parse(state.pgVkJson);
+        const proofObj = JSON.parse(state.pgProofJson);
+        const pubObj = JSON.parse(state.pgPublicJson);
+        validateAndConvertVK(vkObj);
+        const p = validateAndConvertProof(proofObj);
+        const pub = encodePublicInputs(pubObj);
+
+        const ok = await snarkjs.groth16.verify(vkObj, pubObj, proofObj);
+        state.pgVerifyBadge = ok
+          ? `<span class="badge ok">BROWSER SNARKJS VERIFICATION: VALID</span>`
+          : `<span class="badge err">BROWSER SNARKJS VERIFICATION: INVALID (Proof Rejected)</span>`;
+        state.pgOutput = `[1] BROWSER SNARKJS: ${ok ? "VALID" : "INVALID"}\n[2] GNO EIP-197 ENCODING:\nA (G1 64B): ${p.a}\nB (G2 128B EIP-197): ${p.b}\nC (G1 64B): ${p.c}\nPublic Inputs (${pub.length}): ${pub.join(",")}\n\n[3] GNOVM VERIFICATION (CLI):\nnode cli/veil.js test --dir <verifier-dir> --proof proof.json --public public.json\n\n[4] ONYX ON-CHAIN CALL:\ngnokey maketx call -pkgpath "<realm>" -func Verify -args ${p.a} -args ${p.b} -args ${p.c} -args ${pub.join(",")} -chainid onyx-1 -remote ${ONYX_RPC} <key>`;
+      } catch (e: any) {
+        state.pgError = e.message;
+        state.pgVerifyBadge = `<span class="badge err">VALIDATION ERROR</span>`;
+      }
+      render();
+    };
+  }
+}
+
+render();
+refreshOnyxStatus();
