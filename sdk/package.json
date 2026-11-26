@@ -1,0 +1,20 @@
+{
+  "name": "@veil-protocol/sdk",
+  "version": "0.1.0",
+  "description": "Veil Protocol TypeScript SDK for Gno.land Groth16 & Semaphore v4",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test ./test/sdk.test.mjs"
+  },
+  "dependencies": {
+    "@semaphore-protocol/group": "4.13.0",
+    "@semaphore-protocol/identity": "4.13.0",
+    "@semaphore-protocol/proof": "4.13.0",
+    "@types/node": "^26.6.11",
+    "ethers": "^6.13.0",
+    "typescript": "^7.0.2"
+  },
+  "license": "Apache-2.0"
+}
