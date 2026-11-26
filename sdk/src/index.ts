@@ -15,7 +15,8 @@ export type VeilErrorCode =
   | "INVALID_PUBLIC_INPUT"
   | "NON_CANONICAL_FIELD"
   | "TOO_MANY_PUBLIC_INPUTS"
-  | "RPC_ERROR";
+  | "RPC_ERROR"
+  | "SNAPSHOT_ROOT_MISMATCH";
 
 export class VeilError extends Error {
   public readonly code: VeilErrorCode;
@@ -342,4 +343,51 @@ export async function queryRealmRender(
   renderPath = ""
 ): Promise<string> {
   return queryGnoABCI(rpcUrl, "vm/qrender", `${realmPath}:${renderPath}`);
+}
+
+function parseQevalString(raw: string): string {
+  const m = raw.match(/^\("((?:[^"\\]|\\.)*)"\s+string\)$/);
+  if (!m) return raw.trim();
+  return m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
+/**
+ * Fetches all frozen poll commitments in bounded pages (<= 100 per page),
+ * reconstructs the Semaphore LeanIMT group, and verifies that the computed
+ * root matches the poll's published SnapshotRoot.
+ */
+export async function fetchPaginatedPollCommitmentsAndVerifyRoot(params: {
+  rpcUrl: string;
+  realmPath: string;
+  pollId: number | bigint;
+  expectedRootHex: string;
+  pageSize?: number;
+}): Promise<{ commitmentsHex: string[]; group: Group; rootHex: string }> {
+  const pageSize = Math.min(Math.max(params.pageSize ?? 100, 1), 100);
+  const commitmentsHex: string[] = [];
+  let offset = 0;
+  for (let page = 0; page < 20; page++) {
+    const raw = await queryGnoABCI(
+      params.rpcUrl,
+      "vm/qeval",
+      `${params.realmPath}.GetPollCommitmentsPaged(${params.pollId},${offset},${pageSize})`
+    );
+    const body = parseQevalString(raw).trim();
+    if (!body) break;
+    const lines = body.split("\n").map((s) => s.trim()).filter(Boolean);
+    commitmentsHex.push(...lines);
+    if (lines.length < pageSize) break;
+    offset += lines.length;
+  }
+  const members = commitmentsHex.map((h) => BigInt("0x" + h.replace(/^0x/i, "")));
+  const group = new Group(members);
+  const rootHex = BigInt(group.root).toString(16).padStart(64, "0");
+  const expected = params.expectedRootHex.replace(/^0x/i, "").toLowerCase();
+  if (rootHex !== expected) {
+    throw new VeilError(
+      "SNAPSHOT_ROOT_MISMATCH",
+      `Reconstructed root ${rootHex} does not match poll snapshot ${expected}`
+    );
+  }
+  return { commitmentsHex, group, rootHex };
 }

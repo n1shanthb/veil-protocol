@@ -179,4 +179,29 @@ export function deriveCanonicalScope(
   return (BigInt(digest) >> 8n).toString(16).padStart(64, "0");
 }
 
+export async function fetchPaginatedPollCommitmentsAndVerifyRoot(params: {
+  fetchPage: (offset: number, limit: number) => Promise<string[]>;
+  expectedRootHex: string;
+  pageSize?: number;
+}): Promise<{ commitmentsHex: string[]; group: Group; rootHex: string }> {
+  const pageSize = Math.min(Math.max(params.pageSize ?? 100, 1), 100);
+  const commitmentsHex: string[] = [];
+  let offset = 0;
+  for (let page = 0; page < 20; page++) {
+    const lines = (await params.fetchPage(offset, pageSize)).map((s) => s.trim()).filter(Boolean);
+    if (lines.length === 0) break;
+    commitmentsHex.push(...lines);
+    if (lines.length < pageSize) break;
+    offset += lines.length;
+  }
+  const members = commitmentsHex.map((h) => BigInt("0x" + h.replace(/^0x/i, "")));
+  const group = new Group(members);
+  const rootHex = BigInt(group.root).toString(16).padStart(64, "0");
+  const expected = params.expectedRootHex.replace(/^0x/i, "").toLowerCase();
+  if (rootHex !== expected) {
+    throw new Error(`Reconstructed root ${rootHex} does not match poll snapshot ${expected}`);
+  }
+  return { commitmentsHex, group, rootHex };
+}
+
 export { Identity, Group, generateProof, verifyProof, unpackGroth16Proof, snarkjs };
