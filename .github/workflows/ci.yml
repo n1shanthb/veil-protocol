@@ -1,0 +1,58 @@
+name: Veil Protocol CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.9"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build pinned Gno toolchain (v1.8.0-rc.1)
+        run: |
+          git clone --depth 1 --branch v1.8.0-rc.1 https://github.com/gnolang/gno.git /tmp/gno
+          cd /tmp/gno
+          test "$(git rev-parse HEAD)" = "fc79041f4cd1a7b3ed4b316dc5ac14162eb78730"
+          go build -o /usr/local/bin/gno ./gnovm/cmd/gno
+          go build -o /usr/local/bin/gnokey ./gno.land/cmd/gnokey
+
+      - name: Verify Semaphore v4.13.0 VK checksum
+        run: |
+          echo "a6789bea2b941dbdb86e887cc9f958aa447dcbfa9ff725a886d99db2c2c47c3b  circuits/semaphore/vk_depth10.json" | sha256sum -c -
+
+      - name: Run all Gno Core, Primitives, Vote, Registry & Forge tests
+        run: gno test -v -root-dir /tmp/gno ./gno/... ./examples/...
+
+      - name: Run Veil Forge CLI smoke test
+        run: |
+          node cli/veil.js inspect circuits/build/cubic_check/verification_key.json
+          node cli/veil.js generate circuits/build/cubic_check/verification_key.json --out examples/_ci_smoke --pkgpath gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/ci_smoke --core gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2
+          node cli/veil.js test --dir examples/_ci_smoke --proof circuits/build/cubic_check/proof.json --public circuits/build/cubic_check/public.json
+          rm -rf examples/_ci_smoke
+
+      - name: Build and test Veil TypeScript SDK
+        working-directory: sdk
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+      - name: Run Sponsored Relayer tests
+        run: node --test ./relayer/test/relayer.test.mjs
+
+      - name: Build Veil Web Platform (Vote + Studio)
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
