@@ -1,5 +1,8 @@
 {
   "release": "veil-v1-rc1",
+  "repository": "https://github.com/n1shanthb/veil-protocol",
+  "verifiedCommit": "c94e11dbf64eb3a0205a03bd683c38b0d892ccdc",
+  "ciRunUrl": "https://github.com/n1shanthb/veil-protocol/actions/runs/45826855505",
   "gnoVersion": "v1.8.0-rc.1",
   "gnoCommit": "fc79041f4cd1a7b3ed4b316dc5ac14162eb78730",
   "network": "onyx-1",
