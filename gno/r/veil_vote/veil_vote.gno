@@ -10,10 +10,26 @@ package veil_vote
 import (
 	"chain/runtime"
 	"encoding/hex"
+	"strconv"
 	"strings"
 
 	"gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2"
 	"gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2"
+)
+
+const (
+	// SupportedDepth is the only Semaphore circuit depth backed by a registered
+	// ceremony VK in V1 (vk_depth10.json).
+	SupportedDepth = 10
+	// MaxGroupMembers is the exact LeanIMT capacity (2^10) for SupportedDepth.
+	MaxGroupMembers  = 1 << SupportedDepth
+	MaxGroups        = 64
+	MaxPolls         = 256
+	MaxTitleLen      = 256
+	MaxOptions       = 32
+	MaxOptionLen     = 64
+	MaxOptionsCSVLen = MaxOptions * (MaxOptionLen + 1)
+	MaxPageSize      = 100
 )
 
 // Poll represents an anonymous voting poll bound to a frozen Semaphore group snapshot.
@@ -38,6 +54,8 @@ var (
 	groups     *semaphore.GroupRegistry
 	nullifiers *semaphore.NullifierSet
 	polls      map[uint64]*Poll
+	groupIDs   []uint64
+	pollIDs    []uint64
 )
 
 func init() {
@@ -86,17 +104,34 @@ func CreateGroup(cur realm, groupID uint64, depth int, rootPublisher address) {
 	if caller != admin {
 		panic("veil_vote: only admin can create groups")
 	}
+	if len(groupIDs) >= MaxGroups {
+		panic("veil_vote: group capacity reached")
+	}
+	if depth != SupportedDepth {
+		panic("veil_vote: unsupported group depth")
+	}
 	if !rootPublisher.IsValid() {
 		panic("veil_vote: invalid root publisher address")
 	}
 	if err := groups.CreateGroup(groupID, depth, admin, rootPublisher, vks); err != nil {
 		panic(err.Error())
 	}
+	groupIDs = append(groupIDs, groupID)
 }
 
 // AddMember registers an eligible Semaphore identity commitment in groupID.
 func AddMember(cur realm, groupID uint64, commitmentHex string) {
 	caller := cur.Previous().Address()
+	if len(commitmentHex) > 66 {
+		panic(groth16.ErrInvalidEncoding.Error())
+	}
+	grp, ok := groups.GetGroup(groupID)
+	if !ok {
+		panic(semaphore.ErrGroupNotFound.Error())
+	}
+	if len(grp.Members) >= MaxGroupMembers {
+		panic("veil_vote: group membership capacity reached")
+	}
 	commitment, err := decodeHex32(commitmentHex)
 	if err != nil {
 		panic(err.Error())
@@ -124,6 +159,16 @@ func CreatePoll(cur realm, pollID, groupID uint64, title, optionsCSV string, ope
 	if caller != admin {
 		panic("veil_vote: only admin can create polls")
 	}
+	if len(pollIDs) >= MaxPolls {
+		panic("veil_vote: poll capacity reached")
+	}
+	title = strings.TrimSpace(title)
+	if len(title) == 0 || len(title) > MaxTitleLen {
+		panic("veil_vote: invalid poll title length")
+	}
+	if len(optionsCSV) == 0 || len(optionsCSV) > MaxOptionsCSVLen {
+		panic("veil_vote: invalid options CSV length")
+	}
 	if _, exists := polls[pollID]; exists {
 		panic("veil_vote: poll already exists")
 	}
@@ -134,15 +179,20 @@ func CreatePoll(cur realm, pollID, groupID uint64, title, optionsCSV string, ope
 	if len(grp.CurrentRoot) != 32 {
 		panic("veil_vote: group has no published root snapshot")
 	}
-	snap := make([]byte, 32)
-	copy(snap, grp.CurrentRoot)
 	opts := splitCSV(optionsCSV)
-	if len(opts) < 2 {
-		panic("veil_vote: poll must have at least 2 options")
+	if len(opts) < 2 || len(opts) > MaxOptions {
+		panic("veil_vote: poll must have between 2 and 32 options")
+	}
+	for i := 0; i < len(opts); i++ {
+		if len(opts[i]) > MaxOptionLen {
+			panic("veil_vote: option length exceeds limit")
+		}
 	}
 	if closeHeight > 0 && closeHeight <= openHeight {
 		panic("veil_vote: invalid open/close height range")
 	}
+	snap := make([]byte, 32)
+	copy(snap, grp.CurrentRoot)
 	polls[pollID] = &Poll{
 		ID:                  pollID,
 		GroupID:             groupID,
@@ -156,6 +206,7 @@ func CreatePoll(cur realm, pollID, groupID uint64, title, optionsCSV string, ope
 		CloseHeight:         closeHeight,
 		Creator:             caller,
 	}
+	pollIDs = append(pollIDs, pollID)
 }
 
 // ClosePoll closes a poll immediately.
@@ -194,6 +245,9 @@ func Vote(
 	}
 	if optionIndex < 0 || optionIndex >= len(p.Options) {
 		panic("veil_vote: invalid vote option")
+	}
+	if len(rootHex) > 66 || len(nullifierHex) > 66 || len(aHex) > 130 || len(bHex) > 258 || len(cHex) > 130 {
+		panic(groth16.ErrInvalidEncoding.Error())
 	}
 
 	root, err := decodeHex32(rootHex)
@@ -237,26 +291,53 @@ func Vote(
 	return "RECORDED"
 }
 
-// GetGroupCommitments returns newline-separated hex identity commitments so
-// clients can independently reconstruct the group's LeanIMT root.
-func GetGroupCommitments(groupID uint64) string {
+// GetGroupMemberCount returns the current number of members in groupID.
+func GetGroupMemberCount(groupID uint64) int {
 	g, ok := groups.GetGroup(groupID)
 	if !ok {
-		return ""
+		return 0
 	}
-	var out strings.Builder
-	for i := 0; i < len(g.Members); i++ {
-		if i > 0 {
-			out.WriteByte('\n')
-		}
-		out.WriteString(hex.EncodeToString(g.Members[i]))
-	}
-	return out.String()
+	return len(g.Members)
 }
 
-// GetPollCommitments returns the exact prefix of group commitments frozen at
-// poll creation time so voters can reconstruct the poll's SnapshotRoot.
-func GetPollCommitments(pollID uint64) string {
+// GetPollSnapshotCount returns the frozen member count at poll creation time.
+func GetPollSnapshotCount(pollID uint64) int {
+	p, ok := polls[pollID]
+	if !ok {
+		return 0
+	}
+	return p.SnapshotMemberCount
+}
+
+// GetGroupCommitmentsPaged returns up to MaxPageSize newline-separated hex
+// identity commitments starting at offset. Returns "" on invalid bounds.
+func GetGroupCommitmentsPaged(groupID uint64, offset, limit int) string {
+	if offset < 0 || limit <= 0 || limit > MaxPageSize {
+		return ""
+	}
+	g, ok := groups.GetGroup(groupID)
+	if !ok || offset >= len(g.Members) {
+		return ""
+	}
+	end := offset + limit
+	if end > len(g.Members) {
+		end = len(g.Members)
+	}
+	return formatCommitmentSlice(g.Members[offset:end])
+}
+
+// GetGroupCommitments returns up to MaxPageSize commitments (page 0).
+// For larger groups, use GetGroupCommitmentsPaged.
+func GetGroupCommitments(groupID uint64) string {
+	return GetGroupCommitmentsPaged(groupID, 0, MaxPageSize)
+}
+
+// GetPollCommitmentsPaged returns up to MaxPageSize frozen snapshot commitments
+// for pollID starting at offset. Returns "" on invalid bounds.
+func GetPollCommitmentsPaged(pollID uint64, offset, limit int) string {
+	if offset < 0 || limit <= 0 || limit > MaxPageSize {
+		return ""
+	}
 	p, ok := polls[pollID]
 	if !ok {
 		return ""
@@ -265,16 +346,68 @@ func GetPollCommitments(pollID uint64) string {
 	if !ok {
 		return ""
 	}
-	limit := p.SnapshotMemberCount
-	if limit > len(g.Members) {
-		limit = len(g.Members)
+	total := p.SnapshotMemberCount
+	if total > len(g.Members) {
+		total = len(g.Members)
+	}
+	if offset >= total {
+		return ""
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return formatCommitmentSlice(g.Members[offset:end])
+}
+
+// GetPollCommitments returns up to MaxPageSize frozen commitments (page 0).
+// For larger snapshots, use GetPollCommitmentsPaged.
+func GetPollCommitments(pollID uint64) string {
+	return GetPollCommitmentsPaged(pollID, 0, MaxPageSize)
+}
+
+// ListPollsPaged returns up to MaxPageSize poll summaries (id|groupID|title|snapshotCount|closed).
+func ListPollsPaged(offset, limit int) string {
+	if offset < 0 || limit <= 0 || limit > MaxPageSize {
+		return ""
+	}
+	if offset >= len(pollIDs) {
+		return ""
+	}
+	end := offset + limit
+	if end > len(pollIDs) {
+		end = len(pollIDs)
 	}
 	var out strings.Builder
-	for i := 0; i < limit; i++ {
+	for i := offset; i < end; i++ {
+		if i > offset {
+			out.WriteByte('\n')
+		}
+		p := polls[pollIDs[i]]
+		out.WriteString(strconv.FormatUint(p.ID, 10))
+		out.WriteByte('|')
+		out.WriteString(strconv.FormatUint(p.GroupID, 10))
+		out.WriteByte('|')
+		out.WriteString(p.Title)
+		out.WriteByte('|')
+		out.WriteString(strconv.Itoa(p.SnapshotMemberCount))
+		out.WriteByte('|')
+		if p.Closed {
+			out.WriteString("closed")
+		} else {
+			out.WriteString("open")
+		}
+	}
+	return out.String()
+}
+
+func formatCommitmentSlice(members [][]byte) string {
+	var out strings.Builder
+	for i := 0; i < len(members); i++ {
 		if i > 0 {
 			out.WriteByte('\n')
 		}
-		out.WriteString(hex.EncodeToString(g.Members[i]))
+		out.WriteString(hex.EncodeToString(members[i]))
 	}
 	return out.String()
 }

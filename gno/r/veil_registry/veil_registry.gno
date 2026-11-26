@@ -26,6 +26,16 @@ type VerifierRecord struct {
 	Deprecated      bool
 }
 
+const (
+	MaxPkgPathLen     = 256
+	MaxFingerprintLen = 128
+	MaxMetadataLen    = 512
+	MaxVersionLen     = 32
+	MaxPublicInputs   = 64
+	MaxRecords        = 1024
+	MaxPageSize       = 50
+)
+
 var (
 	nextID  uint64 = 1
 	records        = make(map[uint64]*VerifierRecord)
@@ -33,7 +43,7 @@ var (
 )
 
 // RegisterVerifier publishes a verifier package entry. Only the original
-// publisher can later deprecate or update it.
+// publisher can later deprecate it. Bounds are enforced before allocation.
 func RegisterVerifier(
 	cur realm,
 	pkgPath string,
@@ -44,8 +54,17 @@ func RegisterVerifier(
 	metadata string,
 	version string,
 ) uint64 {
-	if pkgPath == "" || vkFingerprint == "" || proofSystem != "groth16" || curve != "bn254" || publicInputs < 0 {
-		panic("veil_registry: invalid verifier metadata or unsupported proof system/curve")
+	if nextID > MaxRecords {
+		panic("veil_registry: registry capacity reached")
+	}
+	if len(pkgPath) == 0 || len(pkgPath) > MaxPkgPathLen ||
+		len(vkFingerprint) == 0 || len(vkFingerprint) > MaxFingerprintLen ||
+		len(metadata) > MaxMetadataLen ||
+		len(version) == 0 || len(version) > MaxVersionLen {
+		panic("veil_registry: invalid or oversized verifier metadata")
+	}
+	if proofSystem != "groth16" || curve != "bn254" || publicInputs < 0 || publicInputs > MaxPublicInputs {
+		panic("veil_registry: unsupported proof system, curve, or public input count")
 	}
 	if _, exists := byPath[pkgPath]; exists {
 		panic("veil_registry: package path already registered")
@@ -80,7 +99,15 @@ func DeprecateVerifier(cur realm, id uint64) {
 	if cur.Previous().Address() != rec.Publisher {
 		panic("veil_registry: only publisher can deprecate")
 	}
+	if rec.Deprecated {
+		panic("veil_registry: already deprecated")
+	}
 	rec.Deprecated = true
+}
+
+// GetRecordCount returns the total number of registered verifiers.
+func GetRecordCount() uint64 {
+	return nextID - 1
 }
 
 // GetVerifier returns a formatted summary of a verifier record.
@@ -96,12 +123,45 @@ func GetVerifier(id uint64) string {
 	return rec.PkgPath + "|" + rec.VKFingerprint + "|" + rec.ProofSystem + "/" + rec.Curve + "|" + strconv.Itoa(rec.PublicInputs) + "|" + rec.Version + "|" + dep
 }
 
-// Render displays the registry disclaimer and all registered verifiers.
+// ListVerifiersPaged returns up to MaxPageSize formatted verifier records
+// starting at 0-based offset. Returns "" on invalid bounds.
+func ListVerifiersPaged(offset, limit int) string {
+	if offset < 0 || limit <= 0 || limit > MaxPageSize {
+		return ""
+	}
+	total := int(nextID - 1)
+	if offset >= total {
+		return ""
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	var b strings.Builder
+	for i := offset; i < end; i++ {
+		if i > offset {
+			b.WriteByte('\n')
+		}
+		id := uint64(i + 1)
+		b.WriteByte('#')
+		b.WriteString(strconv.FormatUint(id, 10))
+		b.WriteString(": ")
+		b.WriteString(GetVerifier(id))
+	}
+	return b.String()
+}
+
+// Render displays the registry disclaimer and up to the latest MaxPageSize verifiers.
 func Render(_ string) string {
 	var b strings.Builder
 	b.WriteString("# Veil Verifier Registry\n\n")
 	b.WriteString("> Disclaimer: Registration does NOT imply that a circuit is trustworthy, audited, or ceremony-backed.\n\n")
-	for id := uint64(1); id < nextID; id++ {
+	total := nextID - 1
+	start := uint64(1)
+	if total > uint64(MaxPageSize) {
+		start = total - uint64(MaxPageSize) + 1
+	}
+	for id := start; id <= total; id++ {
 		b.WriteString("- #")
 		b.WriteString(strconv.FormatUint(id, 10))
 		b.WriteString(": ")
