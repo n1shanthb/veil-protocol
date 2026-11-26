@@ -2,7 +2,7 @@ name: Veil Protocol CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, hardening/resource-safety]
   pull_request:
 
 jobs:
