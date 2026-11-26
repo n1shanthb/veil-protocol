@@ -71,6 +71,7 @@ Because `semaphore/v2` is already submitted to Onyx (`Tx: yhsY8yPnhZMsWQXr2sDO1G
 
 ## 4. Package Versioning & Deployment Blockers
 
+- **Linux CI Verification:** [`Veil Protocol CI #45849475808`](https://github.com/n1shanthb/veil-protocol/actions/runs/45849475808) PASSED in `1m11s` on `ubuntu-latest` (`hardening/resource-safety` commit `51dda28`).
 - **Unchanged Onyx-Submitted Packages:** `groth16/v2` (`1426060`) and `semaphore/v2` (`1426645`) remain untouched and in GPAS `review` (`in review queue`) on `onyx-1`.
 - **Ready for Onyx Once Dependencies Activate:** `veil_vote/v3` and `veil_registry/v1` (with all resource-safety bounds above) have **not** been submitted to Onyx yet.
 - **Verdicts:**
