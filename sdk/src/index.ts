@@ -3,6 +3,8 @@ import { Group } from "@semaphore-protocol/group";
 import { generateProof, unpackGroth16Proof, type SemaphoreProof } from "@semaphore-protocol/proof";
 import { keccak256, toBeHex } from "ethers";
 
+export { Identity, Group };
+
 export const BN254_P =
   21888242871839275222246405745257275088696311157297823662689037894645226208583n;
 export const BN254_R =
