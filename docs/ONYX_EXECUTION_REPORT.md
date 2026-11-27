@@ -19,23 +19,26 @@
 
 ---
 
-## Step 1 — Active Dependency Verification
+## Step 1 — Active Dependency Verification & Hash Reconciliation
 
 - **Network Check:** `https://rpc.onyx.testnets.gno.land:443/status` -> `network: onyx-1`, `height: 1445390`, `version: v1.8.0-rc.1`.
 - **Wallet Balance:** `275,291,500 ugnot`.
-- **On-Chain Source Integrity (`vm/qfile` vs local `main`, LF-normalized):**
-  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2/groth16.gno`: **Active & Exact Match** (`sha256: 700e35fc3a521ba979eb7bc7f9602308c9f10a1f881f5c32a54d55d4063d5917`).
-  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2/semaphore.gno`: **Active & Exact Match** (`sha256: ebd9fcb6b3781f1363fafc4571d954ccfa51834d253ee93474cc9c01b8f0ee10`).
+- **On-Chain Source Integrity (`vm/qfile` vs local `main`):**
+  - On Windows (`CRLF` working tree), raw file SHA-256 differs from LF-normalized `vm/qfile` output. Both `rawSha256` and `lfSha256` are recorded in [`docs/RELEASE_MANIFEST.json`](./RELEASE_MANIFEST.json).
+  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2/groth16.gno`: **Active & Exact LF Match** (`lfSha256`: `700e35fc3a521ba979eb7bc7f9602308c9f10a1f881f5c32a54d55d4063d5917`, `rawSha256`: `881a20a5eb295d08dabf3c0d41d8dc47d900d4d62096c1f270a01b1350b67931`).
+  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2/semaphore.gno`: **Active & Exact LF Match** (`lfSha256`: `ebd9fcb6b3781f1363fafc4571d954ccfa51834d253ee93474cc9c01b8f0ee10`, `rawSha256`: `c02a60583d3bdc61d0ff301761bee29c2db19dd1ff3743378ce992c0f93f0ca1`).
 
 ---
 
-## Step 2 — RC2 Package Submissions (`onyx-1`)
+## Step 2 — RC2 Package Submissions & GPAS Enablement Diagnosis (`onyx-1`)
 
 | Package Path | Chain / Height | Tx Hash | Gas Used | Fee | GPAS Status |
 | :--- | :---: | :--- | :---: | :---: | :--- |
-| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3` | `onyx-1` / `1445403` | `n8gsscfoGHMyEy5p0yj9cDlg/M9Io5gWcH9Numi5cOw=` | `47,790,095` | `2,000,000 ugnot` | `pass` (`2026-11-27T07:06:54Z`), awaiting on-chain enable tx |
-| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1` | `onyx-1` / `1445405` | `Z3nPuj8AoPVXdPOuWx3czo+Bk9dJQPhbVpNRsbJzJkw=` | `17,058,134` | `1,000,000 ugnot` | `pass` (`2026-11-27T07:07:00Z`), awaiting on-chain enable tx |
-| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier` | `onyx-1` / `1445406` | `2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=` | `6,480,793` | `1,000,000 ugnot` | `pass` (`2026-11-27T07:07:06Z`), awaiting on-chain enable tx |
+| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3` | `onyx-1` / `1445403` | `n8gsscfoGHMyEy5p0yj9cDlg/M9Io5gWcH9Numi5cOw=` | `47,790,095` | `2,000,000 ugnot` | `pass` (`at: 2026-11-27T07:06:54Z`, no `enable_at`, `On chain` empty) |
+| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1` | `onyx-1` / `1445405` | `Z3nPuj8AoPVXdPOuWx3czo+Bk9dJQPhbVpNRsbJzJkw=` | `17,058,134` | `1,000,000 ugnot` | `pass` (`at: 2026-11-27T07:07:00Z`, no `enable_at`, `On chain` empty) |
+| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier` | `onyx-1` / `1445406` | `2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=` | `6,480,793` | `1,000,000 ugnot` | `pass` (`at: 2026-11-27T07:07:06Z`, no `enable_at`, `On chain` empty) |
+
+- **GPAS Enabler Check:** Queried `vm/qfile` on `onyx-1` for all three realms plus unrelated `gno.land/r/g1h2fd0ykqkfgh6heggn6uh0r9qnxz9ujpka5fce/tavernpay` (`pass` at `07:16:48Z`); all return `package ... is not available`. GPAS has passed all checks, but its on-chain enabler has not yet committed the enablement transactions.
 
 ---
 

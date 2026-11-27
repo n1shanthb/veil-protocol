@@ -18,7 +18,11 @@
       "matchesLocalSource": true,
       "files": {
         "gnomod.toml": "210b934f4045df37e9b0ddec97c68f24c752cbddfcaf8c364ed1696fb0b33fe5",
-        "groth16.gno": "881a20a5eb295d08dabf3c0d41d8dc47d900d4d62096c1f270a01b1350b67931",
+        "groth16.gno": {
+          "rawSha256": "881a20a5eb295d08dabf3c0d41d8dc47d900d4d62096c1f270a01b1350b67931",
+          "lfSha256": "700e35fc3a521ba979eb7bc7f9602308c9f10a1f881f5c32a54d55d4063d5917",
+          "onyxQfileSha256": "700e35fc3a521ba979eb7bc7f9602308c9f10a1f881f5c32a54d55d4063d5917"
+        },
         "groth16_test.gno": "5a6bc6b6516f9cdf32ba4f3d22e7f9f0d886316d553b70adaa689e0b7f1a69c6",
         "differential_test.gno": "dedc4dee094fd995ee320ca36881ced5f2a6b6e2dbacb8526cbff5fc373a6be8",
         "hardening_test.gno": "9942dae50aff6644cef659ed770a0f1c256ef89a785c50397c408ba4b2f9b33b"
@@ -38,7 +42,11 @@
       "matchesLocalSource": true,
       "files": {
         "gnomod.toml": "29d4fe79c2f29c1841c12a94b44d1d4cf52ec7f5617e91ac5984ad0d4ec51e0d",
-        "semaphore.gno": "c02a60583d3bdc61d0ff301761bee29c2db19dd1ff3743378ce992c0f93f0ca1",
+        "semaphore.gno": {
+          "rawSha256": "c02a60583d3bdc61d0ff301761bee29c2db19dd1ff3743378ce992c0f93f0ca1",
+          "lfSha256": "ebd9fcb6b3781f1363fafc4571d954ccfa51834d253ee93474cc9c01b8f0ee10",
+          "onyxQfileSha256": "ebd9fcb6b3781f1363fafc4571d954ccfa51834d253ee93474cc9c01b8f0ee10"
+        },
         "semaphore_test.gno": "7b5688d4784e58f21a95c7411be59c489528ff16e359873277b18cabfae72341",
         "poseidon_bench_test.gno": "df38f81a5ba85a9a3113bfbc17977b549bec647139146299b39d190022d79794"
       }
@@ -57,7 +65,10 @@
       "gpasPassedAt": "2026-11-27T07:06:54Z",
       "files": {
         "gnomod.toml": "8f4ed5a4cc0a70b9dadfba7ed1cdf45e0f48df5ebf61d93fc43653d6b7b5f876",
-        "veil_vote.gno": "dda4d36dd61366bb156d01b138ab169cd609a0a04821464baabc13492cd5f692",
+        "veil_vote.gno": {
+          "rawSha256": "08379a9092dbaaf219d5522fa2ff3ee653ae85a36aae4c6acdd40d2a369cb8fb",
+          "lfSha256": "c3ea4196dc81ce024daa88d4844516ddc2e989eac99239c22425df9926592eae"
+        },
         "veil_vote_test.gno": "54d986389d29dc5c59f5ecbcdaf25bae30f85f369fa0d3eff9da1c2679a089b2"
       }
     },
@@ -74,7 +85,10 @@
       "gpasPassedAt": "2026-11-27T07:07:00Z",
       "files": {
         "gnomod.toml": "8b70d91102ca518f282cee186fd3cf271132aed2c54c2e6d9546a9aa94ef9b53",
-        "veil_registry.gno": "cb486d2b0132e0e80c53f51b62b2bdb4a58067c0ac8012bb9a692346a03dcbc1",
+        "veil_registry.gno": {
+          "rawSha256": "cb43e667f2943d9707b1db711e6a9396b78e1e205fa4a76c683ba771eb3d6e0a",
+          "lfSha256": "ba8145df7c4ff21a79d16ade40e8857b20fd29dd089a610eef21678f300d440f"
+        },
         "veil_registry_test.gno": "7e61928591131b4cf7d400940789e4cda61964b52c3499d73f3c97dd254c0eed"
       }
     },
@@ -88,7 +102,13 @@
       "onyxTxHash": "2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=",
       "onyxGasUsed": 6480793,
       "gpasStatus": "pass",
-      "gpasPassedAt": "2026-11-27T07:07:06Z"
+      "gpasPassedAt": "2026-11-27T07:07:06Z",
+      "files": {
+        "verifier.gno": {
+          "rawSha256": "f8ebd19a5b12116c70e03e25d4bb55567010299cc05884270430aaf853105c15",
+          "lfSha256": "cc6d643de2328aaefe11029bdb9f92b995cd1ff66beaa118a7b5a485c936bc47"
+        }
+      }
     }
   ],
   "offchainFiles": {
