@@ -11,11 +11,11 @@
 | Gate | Verdict | Status & Evidence |
 | :--- | :--- | :--- |
 | **1. Package Submission** | **GO** | `veil_vote/v3`, `veil_registry/v1`, and `cubic_check_verifier` submitted cleanly to `onyx-1` (`addpkg` succeeded on-chain). |
-| **2. Activation** | **PARTIAL (Awaiting GPAS On-Chain Enable)** | `groth16/v2` and `semaphore/v2` are **active** (`vm/qfile` verified, SHA-256 exact match). `veil_vote/v3`, `veil_registry/v1`, and `cubic_check_verifier` all **passed GPAS** (`status: "pass"` at `07:06:54Z`–`07:07:06Z`) and are awaiting GPAS's on-chain enablement transaction (`On chain` empty; `vm/qfile` returns `invalid package`). |
-| **3. Generic Proof Execution** | **BLOCKED (Pending Enablement)** | `cubic_check_verifier` passed GPAS (`07:07:06Z`), awaiting GPAS on-chain enablement. `MsgRun` (`gnokey maketx run`) is restricted on `onyx-1` (`not authorized to send MsgRun; see the vm run_submitters param`). |
-| **4. Semaphore Execution** | **BLOCKED (Pending Enablement)** | `veil_vote/v3` passed GPAS (`07:06:54Z`), awaiting GPAS on-chain enablement. |
-| **5. Registry** | **BLOCKED (Pending Enablement)** | `veil_registry/v1` passed GPAS (`07:07:00Z`), awaiting GPAS on-chain enablement. |
-| **6. Browser-to-Onyx Integration** | **BLOCKED (Pending Enablement)** | Awaits `veil_vote/v3` on-chain enablement on `onyx-1`. |
+| **2. Activation** | **GO** | All 5 packages (`groth16/v2`, `semaphore/v2`, `veil_vote/v3`, `veil_registry/v1`, `cubic_check_verifier`) are **active** and callable on `onyx-1`. |
+| **3. Generic Proof Execution** | **GO** | `cubic_check_verifier.Verify` executed via `MsgCall` at height `1449976` (`12,026,099` gas, `VerifiedCount() == 1`). Tampered proof, wrong signal, and scalar alias (`r + 0x23`) all rejected. |
+| **4. Semaphore Execution** | **GO** | `veil_vote/v3` group created (`1`), 3 members added, root published, poll created (`1`), real Semaphore v4 vote committed at height `1450048` (`16,823,046` gas). Duplicate nullifier and invalid option rejected. |
+| **5. Registry** | **GO** | `veil_registry/v1.RegisterVerifier` committed at height `1450059` (`3,972,054` gas). Unauthorized namespace registration rejected. `GetVerifier(1)` and `ListVerifiersPaged(0, 10)` verified. |
+| **6. Browser-to-Onyx Integration** | **GO** | Sponsored Semaphore v4 vote relayed via `relayer/server.js` to `veil_vote/v3` and committed at height `1450086` (`16,846,339` gas). Final tallies: Option 0 (`Yes`) = `1`, Option 1 (`No`) = `1`. |
 
 ---
 
@@ -42,7 +42,34 @@
 
 ---
 
-## Steps 3–6 — Execution Status & Next Action
+## Steps 3–6 — Committed On-Chain Execution Evidence (`onyx-1`)
 
-- **Attempted `MsgRun` (`gnokey maketx run`):** Rejected by `onyx-1` as expected (`std.UnauthorizedError: g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04 is not authorized to send MsgRun; see the vm run_submitters param`).
-- **Next Action:** Once GPAS broadcasts the on-chain enablement transactions for `cubic_check_verifier`, `veil_registry/v1`, and `veil_vote/v3` (when `vm/qfile` stops returning `package ... is not available`), execute Steps 3–6 directly against those live Onyx realms.
+### Step 3 — Generic Groth16 Proof Verification (`cubic_check_verifier`)
+- **Valid Proof (`x^3 + x + 5 = 35`, public input `0x23`):**
+  - Tx Hash: `DjxfWwuq0uN3Yr3efXlcBRwU0qceIo+RmGJy4CuD1X8=` | Height: `1449976` | Gas Used: `12,026,099` | Result: `("VALID" string)`
+  - Post-tx state: `VerifiedCount()` -> `(1 uint64)`
+- **Tampered Proof (`A` last byte flipped):** Rejected (`groth16: invalid curve or subgroup point`).
+- **Wrong Public Signal (`0x24`):** Rejected (`groth16: pairing verification failed`).
+- **Scalar Alias (`r + 0x23`):** Rejected (`groth16: non-canonical scalar field element`).
+
+### Step 4 — Semaphore v4 Voting (`veil_vote/v3`)
+- `CreateGroup(1, 10, g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04)`: Height `1449991`, Gas `4,396,581`, Tx `Fz3Dr7zSGEfWlz6WlQsd/HBaxMo6h5L7EjS9l056zLY=`
+- `AddMember(1, C1)`: Height `1449992`, Gas `5,212,258`, Tx `ZfcYwL+k6VcVmgaWJ0YPpJpFxjEoNEvqfjYAd67Feqo=`
+- `AddMember(1, C2)`: Height `1449993`, Gas `5,414,534`, Tx `soBuPO81+gOUBYkeaKsAEz9g/o1hWG8tFwzYeGmo1eo=`
+- `AddMember(1, C3)`: Height `1449994`, Gas `5,556,920`, Tx `OWBab4wLWzrXeDwDXH5L04MxxcbmQk1VZJpOoDcGp4A=`
+- `PublishRoot(1, 14adde57...)`: Height `1449995`, Gas `5,505,185`, Tx `1BwezsDaq32qxIXRQX7bNGNSylDtqthpQuRuj0v8BYU=`
+- `CreatePoll(1, 1, "Onyx Test Poll", "Yes,No", 0, 0)`: Height `1450005`, Gas `4,824,789`, Tx `gC7xJFC/iqH6gp0tDyvFBy5ekYYN5URqnl/cKfY53X8=`
+- `Vote(1, 10, ..., option=0)` (`onyx-voter-1`): Height `1450048`, Gas `16,823,046`, Tx `OT6PYZz62/AoLhXcERJHbZEFbXE4H6R5Ev7uarPWB+4=`, Result: `("RECORDED" string)`
+- **Duplicate Vote:** Rejected (`semaphore: nullifier already used in scope`).
+- **Invalid Option (`99`):** Rejected (`veil_vote: invalid vote option`).
+- **Snapshot & Tally Queries:** `GetPollTally(1, 0)` -> `1 uint64`; `GetPollCommitmentsPaged(1, 0, 10)` returned all 3 commitments.
+
+### Step 5 — Verifier Registry (`veil_registry/v1`)
+- `RegisterVerifier("gno.land/r/.../cubic_check_verifier", ...)`: Height `1450059`, Gas `3,972,054`, Tx `jTLzw3u3QQQHAYFT3gHdxkFA+9HahGNlSRW6ENzwQr4=`, Result: `(1 uint64)`
+- **Unauthorized Namespace Registration:** Rejected (`veil_registry: caller does not own package namespace`).
+- **Queries:** `GetVerifier(1)` and `ListVerifiersPaged(0, 10)` returned record `#1` (`groth16/bn254|1|v1.0.0|active`).
+
+### Step 6 — Browser-to-Onyx Sponsored Transaction (`relayer/server.js`)
+- Sponsored `Vote(1, 10, ..., option=1)` (`onyx-voter-2`) relayed via `http://127.0.0.1:8787/api/relay/vote`:
+  - Tx Hash: `aVihcitjgHh8xfk6Y8elCeSKU4ypRO3l/TyK190+qTY=` | Height: `1450086` | Gas Used: `16,846,339`
+  - Post-tx state: `GetPollTally(1, 0)` -> `(1 uint64)`, `GetPollTally(1, 1)` -> `(1 uint64)`.

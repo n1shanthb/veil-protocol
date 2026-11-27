@@ -133,5 +133,16 @@
         "sha256": "f644af6753be9d48454d8f9bb74bf2e9a416dd7d1a704c3cf1d50e535969a19a"
       }
     }
+  },
+  "onyxExecution": {
+    "network": "onyx-1",
+    "cubicCheckVerifyTx": "DjxfWwuq0uN3Yr3efXlcBRwU0qceIo+RmGJy4CuD1X8=",
+    "cubicCheckVerifyHeight": 1449976,
+    "semaphoreVoteTx": "OT6PYZz62/AoLhXcERJHbZEFbXE4H6R5Ev7uarPWB+4=",
+    "semaphoreVoteHeight": 1450048,
+    "registryRegisterTx": "jTLzw3u3QQQHAYFT3gHdxkFA+9HahGNlSRW6ENzwQr4=",
+    "registryRegisterHeight": 1450059,
+    "sponsoredRelayVoteTx": "aVihcitjgHh8xfk6Y8elCeSKU4ypRO3l/TyK190+qTY=",
+    "sponsoredRelayVoteHeight": 1450086
   }
 }
