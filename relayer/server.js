@@ -201,7 +201,7 @@ async function relayVoteViaGnokey(body, simulateOnly, cfg) {
       }
       resolve({ stdout: out });
     });
-    child.stdin.write(`${passphrase}\r\n`);
+    child.stdin.write(`${passphrase}\n`);
     child.stdin.end();
   });
   const txMatch = stdout.match(/TX HASH:\s*([A-Za-z0-9+/=]+)/);
