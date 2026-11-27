@@ -1,5 +1,5 @@
 {
-  "name": "@veil-gno/cli",
+  "name": "@veil-zk/cli",
   "version": "0.1.0",
   "description": "Veil Protocol CLI for Gno.land Groth16 & Semaphore v4",
   "bin": {
@@ -8,6 +8,7 @@
   "files": [
     "bin",
     "skills",
+    "artifacts",
     "README.md"
   ],
   "engines": {
@@ -19,7 +20,7 @@
     "directory": "packages/cli"
   },
   "dependencies": {
-    "@veil-gno/sdk": "^0.1.0"
+    "@veil-zk/sdk": "^0.1.0"
   },
   "license": "MIT"
 }

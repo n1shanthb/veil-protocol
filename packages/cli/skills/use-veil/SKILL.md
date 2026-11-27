@@ -9,7 +9,7 @@ Use this skill when a user wants to add zero-knowledge proof verification, Semap
 
 ## Rules
 1. Always inspect the existing project (`veil doctor --json`) before modifying files.
-2. Never invent Gno package paths or reimplement BN254 EIP-197 encodings. Use `veil` CLI or `@veil-gno/sdk`.
+2. Never invent Gno package paths or reimplement BN254 EIP-197 encodings. Use `veil` CLI or `@veil-zk/sdk`.
 3. Never log or commit private keys, mnemonics, identity secrets, or witnesses.
 4. Default to `--dry-run` / deployment plans for on-chain transactions unless the user explicitly authorizes broadcasting.
 

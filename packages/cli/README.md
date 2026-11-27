@@ -1,4 +1,4 @@
-# @veil-gno/cli
+# @veil-zk/cli
 
 Command-line interface (`veil`) for Veil Protocol on Gno.land (`onyx-1`).
 

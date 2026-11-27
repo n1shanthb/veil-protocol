@@ -118,6 +118,20 @@ async function main() {
   }
 
   if (cmd === "circuits") {
+    const sub = args[1];
+    if (sub === "pull") {
+      const id = args[2] || "multiplier";
+      const outDir = getArg("--out", `./${id}`);
+      const srcDir = path.resolve(__dirname, "..", "artifacts", id);
+      if (!fs.existsSync(srcDir)) fail("ENOENT", `Bundled artifacts not found for circuit "${id}"`);
+      fs.mkdirSync(outDir, { recursive: true });
+      const files = fs.readdirSync(srcDir);
+      for (const f of files) {
+        fs.copyFileSync(path.join(srcDir, f), path.join(outDir, f));
+      }
+      out({ ok: true, circuit: id, outDir: path.resolve(outDir), files }, `Pulled ${files.length} artifact(s) for ${id} to ${outDir}`);
+      return;
+    }
     const list = [
       { id: "multiplier", protocol: "groth16", curve: "bn254", publicInputs: 1, provenance: "Dev-Only (pot12)" },
       { id: "sum_of_squares", protocol: "groth16", curve: "bn254", publicInputs: 2, provenance: "Dev-Only (pot12)" },
@@ -232,7 +246,7 @@ async function main() {
 
   if (cmd === "setup") {
     const client = getArg("--client", "antigravity");
-    const mcpConfig = { mcpServers: { veil: { command: "npx", args: ["-y", "@veil-gno/mcp"] } } };
+    const mcpConfig = { mcpServers: { veil: { command: "npx", args: ["-y", "@veil-zk/mcp"] } } };
     out({ ok: true, client, mcpConfig }, `Agent setup for ${client}:\n${JSON.stringify(mcpConfig, null, 2)}`);
     return;
   }

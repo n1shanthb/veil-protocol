@@ -40,6 +40,18 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: "veil_deployment_status",
+    description: "Check whether a Gno package path is active on Onyx (vm/qfile).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pkgPath: { type: "string" },
+      },
+      required: ["pkgPath"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 async function handleTool(name, args) {
@@ -92,6 +104,20 @@ async function handleTool(name, args) {
       dryRun: true,
       command: `gnokey maketx addpkg -pkgpath "${pkgPath}" -pkgdir "${dir}" -gas-fee 1000000ugnot -gas-wanted 10000000 -chainid onyx-1 -remote ${ONYX_RPC} <key>`,
     };
+  }
+  if (name === "veil_deployment_status") {
+    const pkgPath = String(args?.pkgPath || "").trim();
+    if (!/^gno\.land\/[pr]\/[a-zA-Z0-9_/-]+$/.test(pkgPath)) {
+      throw new Error("Invalid Gno package path");
+    }
+    const r = await fetch(ONYX_RPC.replace(":443", ""), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "abci_query", params: { path: "vm/qfile", data: Buffer.from(pkgPath).toString("base64") } }),
+    });
+    const j = await r.json();
+    const active = !j?.result?.response?.ResponseBase?.Error;
+    return { pkgPath, active };
   }
   throw new Error(`Unknown tool: ${name}`);
 }

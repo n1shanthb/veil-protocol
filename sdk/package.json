@@ -1,5 +1,5 @@
 {
-  "name": "@veil-gno/sdk",
+  "name": "@veil-zk/sdk",
   "version": "0.1.0",
   "description": "Veil Protocol TypeScript SDK for Gno.land Groth16 & Semaphore v4",
   "main": "./dist/index.js",

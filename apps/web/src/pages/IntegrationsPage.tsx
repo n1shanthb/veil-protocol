@@ -18,17 +18,17 @@ export function IntegrationsPage() {
       </div>
 
       <Notice tone="warn" title="Package Publication Status">
-        <code className="mono">@veil-gno/sdk</code>, <code className="mono">@veil-gno/cli</code>, and <code className="mono">@veil-gno/mcp</code> (v0.1.0) are packaged and tested via local <code className="mono">npm pack</code> tarballs. Public npm publication is pending owner approval.
+        <code className="mono">@veil-zk/sdk</code>, <code className="mono">@veil-zk/cli</code>, and <code className="mono">@veil-zk/mcp</code> (v0.1.0) are packaged and tested via local <code className="mono">npm pack</code> tarballs. Public npm publication is pending owner approval.
       </Notice>
 
-      <Panel title="1. Veil CLI (@veil-gno/cli)">
+      <Panel title="1. Veil CLI (@veil-zk/cli)">
         <CodeEditor
           label="CLI Commands"
           code={`# Environment diagnostics\nveil doctor --json\n\n# Inspect & generate Gno verifier\nveil inspect verification_key.json --json\nveil generate verification_key.json --out ./my_verifier --pkgpath gno.land/r/<namespace>/my_verifier\n\n# Query live Onyx & Registry\nveil network --json\nveil registry --json\n\n# Prepare deployment plan (dry-run)\nveil deploy ./my_verifier --pkgpath gno.land/r/<namespace>/my_verifier --dry-run --json`}
         />
       </Panel>
 
-      <Panel title="2. Agent Skill (use-veil) &amp; MCP Server (@veil-gno/mcp)">
+      <Panel title="2. Agent Skill (use-veil) &amp; MCP Server (@veil-zk/mcp)">
         <CodeEditor
           label="Install Skill & Configure MCP"
           code={`# Install the use-veil Agent Skill\nveil skills install\n\n# Print MCP configuration for Claude Code, Cursor, Codex, Gemini CLI, or Antigravity\nveil setup agent --client antigravity`}
@@ -36,7 +36,7 @@ export function IntegrationsPage() {
         <div style={{ marginTop: 14 }}>
           <CodeEditor
             label="mcpServers config"
-            code={`{\n  "mcpServers": {\n    "veil": {\n      "command": "npx",\n      "args": ["-y", "@veil-gno/mcp"]\n    }\n  }\n}`}
+            code={`{\n  "mcpServers": {\n    "veil": {\n      "command": "npx",\n      "args": ["-y", "@veil-zk/mcp"]\n    }\n  }\n}`}
           />
         </div>
       </Panel>

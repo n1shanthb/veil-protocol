@@ -1,4 +1,4 @@
-# @veil-gno/mcp
+# @veil-zk/mcp
 
 Local stdio MCP server for Veil Protocol on Gno.land (`onyx-1`).
 

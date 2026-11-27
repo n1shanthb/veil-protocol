@@ -1,5 +1,5 @@
 {
-  "name": "@veil-gno/mcp",
+  "name": "@veil-zk/mcp",
   "version": "0.1.0",
   "description": "Local stdio MCP server for Veil Protocol on Gno.land",
   "bin": {

@@ -1,4 +1,4 @@
-# @veil-gno/sdk
+# @veil-zk/sdk
 
 TypeScript SDK for Veil Protocol zero-knowledge verification on Gno.land (`onyx-1`).
 
