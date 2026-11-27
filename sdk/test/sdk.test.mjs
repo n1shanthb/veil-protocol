@@ -152,6 +152,12 @@ test("12. Paginated poll snapshot reconstruction & root verification", async () 
   const srv = http.createServer((req, res) => {
     const u = new URL(req.url, "http://127.0.0.1");
     const data = decodeURIComponent(u.searchParams.get("data") || "");
+    if (data.includes("GetPollSnapshotCount")) {
+      const b64 = Buffer.from(`(3 int)`).toString("base64");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ result: { response: { ResponseBase: { Data: b64 } } } }));
+      return;
+    }
     const m = data.match(/GetPollCommitmentsPaged\(\d+,(\d+),(\d+)\)/);
     const off = m ? Number(m[1]) : 0;
     const body = off === 0 ? pages[0].join("\n") : off === 2 ? pages[1].join("\n") : "";

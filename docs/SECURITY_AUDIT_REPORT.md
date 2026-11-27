@@ -1,6 +1,6 @@
-# Veil Protocol — Independent Adversarial Security Audit Report
+# Veil Protocol — AI-Assisted Adversarial Security Review Report
 
-**Auditor:** Independent Adversarial Security Auditor (`research` subagent `94d9bbe2-93f6-491b-8ddf-a1343e9fc982`)  
+**Reviewer:** AI-Assisted Adversarial Security Review (`research` subagent `94d9bbe2-93f6-491b-8ddf-a1343e9fc982`)  
 **Scope:** `gno/p/groth16/`, `gno/p/semaphore/`, `gno/r/veil_vote/`, `sdk/`, `relayer/`, `apps/web/`, `cli/`, `.github/workflows/ci.yml`  
 **Audit Date:** November 26, 2026
 

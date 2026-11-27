@@ -24,6 +24,7 @@ const (
 	// MaxGroupMembers is the exact LeanIMT capacity (2^10) for SupportedDepth.
 	MaxGroupMembers  = 1 << SupportedDepth
 	MaxGroups        = 64
+	MaxRootsPerGroup = 256
 	MaxPolls         = 256
 	MaxTitleLen      = 256
 	MaxOptions       = 32
@@ -49,13 +50,15 @@ type Poll struct {
 }
 
 var (
-	admin      = address("g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04")
-	vks        *semaphore.VKRegistry
-	groups     *semaphore.GroupRegistry
-	nullifiers *semaphore.NullifierSet
-	polls      map[uint64]*Poll
-	groupIDs   []uint64
-	pollIDs    []uint64
+	admin                = address("g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04")
+	vks                  *semaphore.VKRegistry
+	groups               *semaphore.GroupRegistry
+	nullifiers           *semaphore.NullifierSet
+	polls                map[uint64]*Poll
+	groupIDs             []uint64
+	pollIDs              []uint64
+	publishedMemberCount map[uint64]int
+	publishedRootCount   map[uint64]int
 )
 
 func init() {
@@ -63,6 +66,8 @@ func init() {
 	groups = semaphore.NewGroupRegistry()
 	nullifiers = semaphore.NewNullifierSet()
 	polls = make(map[uint64]*Poll)
+	publishedMemberCount = make(map[uint64]int)
+	publishedRootCount = make(map[uint64]int)
 
 	// Register ceremony-backed Semaphore v4 depth-10 verification key.
 	vk10, err := groth16.ParseVerifyingKeyHex(
@@ -86,7 +91,9 @@ func init() {
 	}
 }
 
-// TransferAdmin transfers realm admin control to a new valid address.
+// TransferAdmin rotates realm-level admin control (CreateGroup, CreatePoll,
+// ClosePoll) for future operations. Existing Semaphore groups in semaphore/v2
+// retain their creation-time Group.Admin and Group.RootPublisher.
 func TransferAdmin(cur realm, newAdmin address) {
 	caller := cur.Previous().Address()
 	if caller != admin {
@@ -141,9 +148,16 @@ func AddMember(cur realm, groupID uint64, commitmentHex string) {
 	}
 }
 
-// PublishRoot updates the authorized LeanIMT root for groupID.
+// PublishRoot updates the authorized LeanIMT root for groupID and records the
+// exact member count at publication time. Root history is bounded by MaxRootsPerGroup.
 func PublishRoot(cur realm, groupID uint64, rootHex string) {
 	caller := cur.Previous().Address()
+	if len(rootHex) > 66 {
+		panic(groth16.ErrInvalidEncoding.Error())
+	}
+	if publishedRootCount[groupID] >= MaxRootsPerGroup {
+		panic("veil_vote: group root history limit reached")
+	}
 	root, err := decodeHex32(rootHex)
 	if err != nil {
 		panic(err.Error())
@@ -151,6 +165,9 @@ func PublishRoot(cur realm, groupID uint64, rootHex string) {
 	if err := groups.PublishRoot(caller, groupID, root); err != nil {
 		panic(err.Error())
 	}
+	grp, _ := groups.GetGroup(groupID)
+	publishedMemberCount[groupID] = len(grp.Members)
+	publishedRootCount[groupID]++
 }
 
 // CreatePoll creates a new poll bound to groupID's current published root snapshot.
@@ -163,11 +180,11 @@ func CreatePoll(cur realm, pollID, groupID uint64, title, optionsCSV string, ope
 		panic("veil_vote: poll capacity reached")
 	}
 	title = strings.TrimSpace(title)
-	if len(title) == 0 || len(title) > MaxTitleLen {
-		panic("veil_vote: invalid poll title length")
+	if len(title) == 0 || len(title) > MaxTitleLen || hasControlOrDelimiter(title) {
+		panic("veil_vote: invalid poll title")
 	}
-	if len(optionsCSV) == 0 || len(optionsCSV) > MaxOptionsCSVLen {
-		panic("veil_vote: invalid options CSV length")
+	if len(optionsCSV) == 0 || len(optionsCSV) > MaxOptionsCSVLen || hasControlOrDelimiter(optionsCSV) {
+		panic("veil_vote: invalid options CSV")
 	}
 	if _, exists := polls[pollID]; exists {
 		panic("veil_vote: poll already exists")
@@ -191,6 +208,7 @@ func CreatePoll(cur realm, pollID, groupID uint64, title, optionsCSV string, ope
 	if closeHeight > 0 && closeHeight <= openHeight {
 		panic("veil_vote: invalid open/close height range")
 	}
+	snapCount := publishedMemberCount[groupID]
 	snap := make([]byte, 32)
 	copy(snap, grp.CurrentRoot)
 	polls[pollID] = &Poll{
@@ -201,7 +219,7 @@ func CreatePoll(cur realm, pollID, groupID uint64, title, optionsCSV string, ope
 		Tallies:             make([]uint64, len(opts)),
 		SnapshotRoot:        snap,
 		SnapshotVersion:     grp.RootVersion,
-		SnapshotMemberCount: len(grp.Members),
+		SnapshotMemberCount: snapCount,
 		OpenHeight:          openHeight,
 		CloseHeight:         closeHeight,
 		Creator:             caller,
@@ -366,7 +384,29 @@ func GetPollCommitments(pollID uint64) string {
 	return GetPollCommitmentsPaged(pollID, 0, MaxPageSize)
 }
 
-// ListPollsPaged returns up to MaxPageSize poll summaries (id|groupID|title|snapshotCount|closed).
+// GetPollStatus returns "scheduled", "open", "expired", or "closed" for pollID.
+func GetPollStatus(pollID uint64) string {
+	p, ok := polls[pollID]
+	if !ok {
+		return ""
+	}
+	return pollStatus(p, runtime.ChainHeight())
+}
+
+func pollStatus(p *Poll, height int64) string {
+	if p.Closed {
+		return "closed"
+	}
+	if height < p.OpenHeight {
+		return "scheduled"
+	}
+	if p.CloseHeight > 0 && height >= p.CloseHeight {
+		return "expired"
+	}
+	return "open"
+}
+
+// ListPollsPaged returns up to MaxPageSize poll summaries (id|groupID|title|snapshotCount|status).
 func ListPollsPaged(offset, limit int) string {
 	if offset < 0 || limit <= 0 || limit > MaxPageSize {
 		return ""
@@ -378,6 +418,7 @@ func ListPollsPaged(offset, limit int) string {
 	if end > len(pollIDs) {
 		end = len(pollIDs)
 	}
+	h := runtime.ChainHeight()
 	var out strings.Builder
 	for i := offset; i < end; i++ {
 		if i > offset {
@@ -392,13 +433,19 @@ func ListPollsPaged(offset, limit int) string {
 		out.WriteByte('|')
 		out.WriteString(strconv.Itoa(p.SnapshotMemberCount))
 		out.WriteByte('|')
-		if p.Closed {
-			out.WriteString("closed")
-		} else {
-			out.WriteString("open")
-		}
+		out.WriteString(pollStatus(p, h))
 	}
 	return out.String()
+}
+
+func hasControlOrDelimiter(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '|' || c < 0x20 || c == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 func formatCommitmentSlice(members [][]byte) string {

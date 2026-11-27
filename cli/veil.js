@@ -218,6 +218,9 @@ func ExpectedPublicInputs() int {
 // Verify checks a Groth16 proof and comma-separated hex public inputs against
 // the embedded circuit verification key. Panics on invalid proof.
 func Verify(cur realm, aHex, bHex, cHex, inputsCSV string) string {
+	if len(aHex) > 130 || len(bHex) > 258 || len(cHex) > 130 || len(inputsCSV) > 64*67 {
+		panic(groth16.ErrInvalidEncoding.Error())
+	}
 	proof, err := groth16.ParseProofHex(aHex, bHex, cHex)
 	if err != nil {
 		panic(err.Error())

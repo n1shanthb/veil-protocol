@@ -254,6 +254,53 @@ func TestResourceLimitsAndPagination(cur realm, t *testing.T) {
 	if ListPollsPaged(0, 10) == "" {
 		t.Fatalf("expected non-empty poll list")
 	}
+
+	// Delimiter injection rejected in title and optionsCSV.
+	assertPanics(t, "delimiter in title", func() {
+		CreatePoll(cross(cur), 505, 1, "Bad|Title", "Yes,No", 0, 0)
+	})
+	assertPanics(t, "newline in optionsCSV", func() {
+		CreatePoll(cross(cur), 505, 1, "Good", "Yes\n,No", 0, 0)
+	})
+
+	// SnapshotMemberCount freezes published member count, NOT post-PublishRoot AddMember additions.
+	CreateGroup(cross(cur), 501, SupportedDepth, admin)
+	AddMember(cross(cur), 501, strings.Repeat("00", 31)+"11")
+	PublishRoot(cross(cur), 501, strings.Repeat("00", 31)+"bb")
+	AddMember(cross(cur), 501, strings.Repeat("00", 31)+"22") // added AFTER PublishRoot
+	CreatePoll(cross(cur), 506, 501, "Snapshot Consistency Poll", "Yes,No", 0, 0)
+	if GetPollSnapshotCount(506) != 1 {
+		t.Fatalf("expected snapshot count 1 (frozen at PublishRoot), got %d", GetPollSnapshotCount(506))
+	}
+
+	// Scheduled, open, expired, and closed poll status reporting.
+	CreatePoll(cross(cur), 507, 501, "Scheduled Poll", "Yes,No", 9999999, 10000000)
+	if st := GetPollStatus(507); st != "scheduled" {
+		t.Fatalf("expected scheduled, got %s", st)
+	}
+	if st := GetPollStatus(506); st != "open" {
+		t.Fatalf("expected open, got %s", st)
+	}
+	ClosePoll(cross(cur), 506)
+	if st := GetPollStatus(506); st != "closed" {
+		t.Fatalf("expected closed, got %s", st)
+	}
+	CreatePoll(cross(cur), 508, 501, "Expired Poll", "Yes,No", 0, 1)
+	if st := GetPollStatus(508); st != "expired" {
+		t.Fatalf("expected expired, got %s", st)
+	}
+}
+
+func TestVoteWorstCaseSingleOps(cur realm, t *testing.T) {
+	testing.SetRealm(testing.NewUserRealm(admin))
+	// Measure individual worst-case operations separately:
+	var opts32 []string
+	for i := 0; i < MaxOptions; i++ {
+		opts32 = append(opts32, "o"+strconv.Itoa(i))
+	}
+	CreatePoll(cross(cur), 600, 500, strings.Repeat("x", MaxTitleLen), strings.Join(opts32, ","), 0, 0)
+	_ = GetPollCommitmentsPaged(504, 0, MaxPageSize)
+	_ = ListPollsPaged(0, MaxPageSize)
 }
 
 func toHex2(b byte) string {

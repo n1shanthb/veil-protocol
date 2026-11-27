@@ -13,7 +13,7 @@
   - **1-input (`TestGasBench_1_Verify1Input`):** Frozen `3,238,181` (`2,888,411` net) vs. Experimental `3,125,106` (`2,775,336` net, `-3.9%`).
   - **2-input (`TestGasBench_2_Verify2Inputs`):** Frozen `3,379,544` (`3,029,774` net) vs. Experimental `3,287,698` (`2,937,928` net, `-3.0%`).
   - **Zero-padded 4/8-input (`TestGasBench_3/4`):** Experimental skips `G1Mul`+`G1Add` for zero scalars (`2,992,005` / `3,280,865` net), whereas fully populated non-zero `16+32+64` inputs (`TestGasBench_6_NonZero16_32_64Inputs`) require `34,121,554` total gas.
-  - **Decision:** **Retain frozen `groth16/v2` for V1.** Native `crypto/bn254` precompile gas (`PairingCheck` + `G1Mul` + `G1Add`) accounts for the majority of single-input cost in `v1.8.0-rc.1`; we did not copy any unlicensed external verifier code.
+  - **Decision:** **Retain frozen `groth16/v2` for V1.** Native `crypto/bn254` precompile gas (`PairingCheck` + `G1Mul` + `G1Add`) accounts for the majority of single-input cost in `v1.8.0-rc.1`; we did not copy any unlicensed external verifier code. **Identical-runtime third-party competitive benchmark:** *Outstanding* (not executed because no licensed third-party implementation is included).
 
 ---
 
@@ -64,8 +64,10 @@ Because `semaphore/v2` is already submitted to Onyx (`Tx: yhsY8yPnhZMsWQXr2sDO1G
 | :--- | :--- | :---: | :---: |
 | `veil_vote` `TestAdversarialVotingSuite` | Replay, wrong poll/group/root/depth/option, closed poll, `TransferAdmin`, `GetPollCommitments` | `91,020,257` | **PASS** |
 | `veil_vote` `TestResourceLimitsAndPagination` | Unsupported depth, empty/257-char title, 32 vs 33 options, 65-char option, full **1024-member** group + 1025th rejection, 11-page snapshot reconstruction, invalid pagination (`-1`, `0`, `101`) | `1,707,625,284` | **PASS** |
-| `veil_registry` `TestRegistryLifecycleAndAuthorization` | Max 256/128/512/32/64 bounds, max+1 rejections, duplicate path, unauthorized/double deprecation, pagination & `Render` | `5,462,949` | **PASS** |
-| `sdk` Test 12 | Multi-page `fetchPaginatedPollCommitmentsAndVerifyRoot` + `SNAPSHOT_ROOT_MISMATCH` | — | **PASS** |
+| `veil_vote` `TestVoteWorstCaseSingleOps` | Individual worst-case ops: 32-option `CreatePoll`, 100-item `GetPollCommitmentsPaged`, 100-item `ListPollsPaged` | `25,833,853` | **PASS** |
+| `veil_registry` `TestRegistryLifecycleAndAuthorization` | Namespace ownership, delimiter rejection, max 256/128/512/32/64 bounds, max+1 rejections, duplicate path, unauthorized/double deprecation, pagination & `Render` | `16,084,651` | **PASS** |
+| `veil_registry` `TestRegistryWorstCaseGas` | 32-record per-publisher cap, 33rd rejection, 50-item `ListVerifiersPaged` | `22,403,903` | **PASS** |
+| `sdk` Test 12 | `GetPollSnapshotCount` + multi-page `fetchPaginatedPollCommitmentsAndVerifyRoot` + `SNAPSHOT_ROOT_MISMATCH` | — | **PASS** |
 
 ---
 

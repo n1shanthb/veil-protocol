@@ -27,23 +27,27 @@ type VerifierRecord struct {
 }
 
 const (
-	MaxPkgPathLen     = 256
-	MaxFingerprintLen = 128
-	MaxMetadataLen    = 512
-	MaxVersionLen     = 32
-	MaxPublicInputs   = 64
-	MaxRecords        = 1024
-	MaxPageSize       = 50
+	MaxPkgPathLen          = 256
+	MaxFingerprintLen      = 128
+	MaxMetadataLen         = 512
+	MaxVersionLen          = 32
+	MaxPublicInputs        = 64
+	MaxRecords             = 1024
+	MaxRecordsPerPublisher = 32
+	MaxPageSize            = 50
 )
 
 var (
-	nextID  uint64 = 1
-	records        = make(map[uint64]*VerifierRecord)
-	byPath         = make(map[string]uint64)
+	nextID          uint64 = 1
+	records                = make(map[uint64]*VerifierRecord)
+	byPath                 = make(map[string]uint64)
+	publisherCounts        = make(map[address]int)
 )
 
-// RegisterVerifier publishes a verifier package entry. Only the original
-// publisher can later deprecate it. Bounds are enforced before allocation.
+// RegisterVerifier publishes a verifier package entry. Callers may only
+// register packages under their own gno.land/{p,r}/<address>/ namespace
+// (and are capped at MaxRecordsPerPublisher) to prevent path squatting and
+// global record exhaustion.
 func RegisterVerifier(
 	cur realm,
 	pkgPath string,
@@ -63,15 +67,31 @@ func RegisterVerifier(
 		len(version) == 0 || len(version) > MaxVersionLen {
 		panic("veil_registry: invalid or oversized verifier metadata")
 	}
+	if hasControlOrDelimiter(pkgPath) || hasControlOrDelimiter(vkFingerprint) ||
+		hasControlOrDelimiter(metadata) || hasControlOrDelimiter(version) {
+		panic("veil_registry: delimiter or control character not allowed")
+	}
 	if proofSystem != "groth16" || curve != "bn254" || publicInputs < 0 || publicInputs > MaxPublicInputs {
 		panic("veil_registry: unsupported proof system, curve, or public input count")
+	}
+	publisher := cur.Previous().Address()
+	if !publisher.IsValid() {
+		panic("veil_registry: invalid publisher address")
+	}
+	prefixR := "gno.land/r/" + publisher.String() + "/"
+	prefixP := "gno.land/p/" + publisher.String() + "/"
+	if !strings.HasPrefix(pkgPath, prefixR) && !strings.HasPrefix(pkgPath, prefixP) {
+		panic("veil_registry: caller does not own package namespace")
+	}
+	if publisherCounts[publisher] >= MaxRecordsPerPublisher {
+		panic("veil_registry: publisher record limit reached")
 	}
 	if _, exists := byPath[pkgPath]; exists {
 		panic("veil_registry: package path already registered")
 	}
-	publisher := cur.Previous().Address()
 	id := nextID
 	nextID++
+	publisherCounts[publisher]++
 	records[id] = &VerifierRecord{
 		ID:              id,
 		PkgPath:         pkgPath,
@@ -169,4 +189,14 @@ func Render(_ string) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+func hasControlOrDelimiter(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '|' || c < 0x20 || c == 0x7f {
+			return true
+		}
+	}
+	return false
 }

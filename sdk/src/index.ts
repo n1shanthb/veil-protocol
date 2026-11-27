@@ -353,10 +353,19 @@ function parseQevalString(raw: string): string {
   return m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
 }
 
+function parseQevalInt(raw: string): number {
+  const m = raw.match(/^\((\d+)\s+int\)$/);
+  if (!m) {
+    throw new VeilError("RPC_ERROR", `Unexpected qeval int response: ${raw}`);
+  }
+  return Number(m[1]);
+}
+
 /**
  * Fetches all frozen poll commitments in bounded pages (<= 100 per page),
- * reconstructs the Semaphore LeanIMT group, and verifies that the computed
- * root matches the poll's published SnapshotRoot.
+ * derives maxPages from GetPollSnapshotCount, validates canonical hex
+ * commitments and total count, reconstructs the Semaphore LeanIMT group,
+ * and verifies that the computed root matches the poll's published SnapshotRoot.
  */
 export async function fetchPaginatedPollCommitmentsAndVerifyRoot(params: {
   rpcUrl: string;
@@ -364,11 +373,25 @@ export async function fetchPaginatedPollCommitmentsAndVerifyRoot(params: {
   pollId: number | bigint;
   expectedRootHex: string;
   pageSize?: number;
+  snapshotCount?: number;
 }): Promise<{ commitmentsHex: string[]; group: Group; rootHex: string }> {
   const pageSize = Math.min(Math.max(params.pageSize ?? 100, 1), 100);
+  const snapshotCount =
+    params.snapshotCount ??
+    parseQevalInt(
+      await queryGnoABCI(
+        params.rpcUrl,
+        "vm/qeval",
+        `${params.realmPath}.GetPollSnapshotCount(${params.pollId})`
+      )
+    );
+  if (!Number.isInteger(snapshotCount) || snapshotCount <= 0 || snapshotCount > 1024) {
+    throw new VeilError("INVALID_PUBLIC_INPUT", `Invalid snapshotCount ${snapshotCount}`);
+  }
+  const maxPages = Math.ceil(snapshotCount / pageSize);
   const commitmentsHex: string[] = [];
   let offset = 0;
-  for (let page = 0; page < 20; page++) {
+  for (let page = 0; page < maxPages; page++) {
     const raw = await queryGnoABCI(
       params.rpcUrl,
       "vm/qeval",
@@ -377,11 +400,24 @@ export async function fetchPaginatedPollCommitmentsAndVerifyRoot(params: {
     const body = parseQevalString(raw).trim();
     if (!body) break;
     const lines = body.split("\n").map((s) => s.trim()).filter(Boolean);
-    commitmentsHex.push(...lines);
-    if (lines.length < pageSize) break;
+    if (lines.length > pageSize) {
+      throw new VeilError("RPC_ERROR", `Page ${page} exceeded requested pageSize ${pageSize}`);
+    }
+    for (const h of lines) {
+      if (!/^[0-9a-f]{64}$/i.test(h)) {
+        throw new VeilError("NON_CANONICAL_FIELD", `Invalid commitment hex: ${h}`);
+      }
+      commitmentsHex.push(h.toLowerCase());
+    }
     offset += lines.length;
   }
-  const members = commitmentsHex.map((h) => BigInt("0x" + h.replace(/^0x/i, "")));
+  if (commitmentsHex.length !== snapshotCount) {
+    throw new VeilError(
+      "SNAPSHOT_ROOT_MISMATCH",
+      `Expected ${snapshotCount} commitments, got ${commitmentsHex.length}`
+    );
+  }
+  const members = commitmentsHex.map((h) => BigInt("0x" + h));
   const group = new Group(members);
   const rootHex = BigInt(group.root).toString(16).padStart(64, "0");
   const expected = params.expectedRootHex.replace(/^0x/i, "").toLowerCase();

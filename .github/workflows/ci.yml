@@ -58,3 +58,11 @@ jobs:
         run: |
           npm ci
           npm run build
+
+      - name: Run Chromium and Firefox E2E (Playwright)
+        working-directory: apps/web
+        env:
+          VEIL_E2E_RELAY: "0"
+        run: |
+          npx playwright install --with-deps chromium firefox
+          node e2e.mjs

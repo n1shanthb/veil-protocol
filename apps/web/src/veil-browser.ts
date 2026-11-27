@@ -112,6 +112,9 @@ ${icLines}
 }
 
 func Verify(cur realm, aHex, bHex, cHex, inputsCSV string) string {
+\tif len(aHex) > 130 || len(bHex) > 258 || len(cHex) > 130 || len(inputsCSV) > 64*67 {
+\t\tpanic(groth16.ErrInvalidEncoding.Error())
+\t}
 \tproof, err := groth16.ParseProofHex(aHex, bHex, cHex)
 \tif err != nil {
 \t\tpanic(err.Error())
@@ -181,20 +184,35 @@ export function deriveCanonicalScope(
 
 export async function fetchPaginatedPollCommitmentsAndVerifyRoot(params: {
   fetchPage: (offset: number, limit: number) => Promise<string[]>;
+  snapshotCount: number;
   expectedRootHex: string;
   pageSize?: number;
 }): Promise<{ commitmentsHex: string[]; group: Group; rootHex: string }> {
   const pageSize = Math.min(Math.max(params.pageSize ?? 100, 1), 100);
+  if (!Number.isInteger(params.snapshotCount) || params.snapshotCount <= 0 || params.snapshotCount > 1024) {
+    throw new Error(`Invalid snapshotCount: ${params.snapshotCount}`);
+  }
+  const maxPages = Math.ceil(params.snapshotCount / pageSize);
   const commitmentsHex: string[] = [];
   let offset = 0;
-  for (let page = 0; page < 20; page++) {
+  for (let page = 0; page < maxPages; page++) {
     const lines = (await params.fetchPage(offset, pageSize)).map((s) => s.trim()).filter(Boolean);
     if (lines.length === 0) break;
-    commitmentsHex.push(...lines);
-    if (lines.length < pageSize) break;
+    if (lines.length > pageSize) {
+      throw new Error(`Page ${page} exceeded pageSize ${pageSize}`);
+    }
+    for (const h of lines) {
+      if (!/^[0-9a-f]{64}$/i.test(h)) {
+        throw new Error(`Invalid commitment hex: ${h}`);
+      }
+      commitmentsHex.push(h.toLowerCase());
+    }
     offset += lines.length;
   }
-  const members = commitmentsHex.map((h) => BigInt("0x" + h.replace(/^0x/i, "")));
+  if (commitmentsHex.length !== params.snapshotCount) {
+    throw new Error(`Expected ${params.snapshotCount} commitments, got ${commitmentsHex.length}`);
+  }
+  const members = commitmentsHex.map((h) => BigInt("0x" + h));
   const group = new Group(members);
   const rootHex = BigInt(group.root).toString(16).padStart(64, "0");
   const expected = params.expectedRootHex.replace(/^0x/i, "").toLowerCase();

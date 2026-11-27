@@ -76,9 +76,18 @@ async function runBrowserSuite(browserType, name, doRealRelayedVote) {
   await page.fill("#id-secret", "veil-phase2-member-1");
   await page.click("#btn-restore-id");
 
-  // 5. Veil Studio: Forge (import cubic_check verification_key.json)
+  // 5. Veil Studio: Forge (import tracked VK)
   await page.click('button[data-tab="forge"]');
-  const vkJson = fs.readFileSync(path.join(ROOT, "circuits/build/cubic_check/verification_key.json"), "utf8");
+  const vkPath = fs.existsSync(path.join(ROOT, "circuits/build/cubic_check/verification_key.json"))
+    ? path.join(ROOT, "circuits/build/cubic_check/verification_key.json")
+    : path.join(ROOT, "circuits/semaphore/vk_depth10.json");
+  const proofPath = fs.existsSync(path.join(ROOT, "circuits/build/cubic_check/proof.json"))
+    ? path.join(ROOT, "circuits/build/cubic_check/proof.json")
+    : path.join(ROOT, "circuits/semaphore/proof_depth10.json");
+  const pubPath = fs.existsSync(path.join(ROOT, "circuits/build/cubic_check/public.json"))
+    ? path.join(ROOT, "circuits/build/cubic_check/public.json")
+    : path.join(ROOT, "circuits/semaphore/public_depth10.json");
+  const vkJson = fs.readFileSync(vkPath, "utf8");
   await page.fill("#forge-vk", vkJson);
   await page.click("#btn-forge-gen");
   const forgeOut = await page.textContent("pre");
@@ -86,8 +95,8 @@ async function runBrowserSuite(browserType, name, doRealRelayedVote) {
 
   // 6. Veil Studio: Proof Playground (real browser-side snarkjs verify: valid + tampered)
   await page.click('button[data-tab="playground"]');
-  const proofJson = fs.readFileSync(path.join(ROOT, "circuits/build/cubic_check/proof.json"), "utf8");
-  const pubJson = fs.readFileSync(path.join(ROOT, "circuits/build/cubic_check/public.json"), "utf8");
+  const proofJson = fs.readFileSync(proofPath, "utf8");
+  const pubJson = fs.readFileSync(pubPath, "utf8");
   await page.fill("#pg-vk", vkJson);
   await page.fill("#pg-proof", proofJson);
   await page.fill("#pg-public", pubJson);
@@ -122,7 +131,8 @@ async function main() {
   });
   try {
     await waitForServer(URL);
-    await runBrowserSuite(chromium, "chromium", true);
+    const useRelay = process.env.VEIL_E2E_RELAY !== "0";
+    await runBrowserSuite(chromium, "chromium", useRelay);
     await runBrowserSuite(firefox, "firefox", false);
   } finally {
     preview.kill();
