@@ -9,7 +9,7 @@ COPY --from=gno-builder /usr/local/bin/gnokey /usr/local/bin/gnokey
 WORKDIR /app
 COPY relayer/server.js /app/server.js
 COPY relayer/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 ENV HOST=0.0.0.0
 ENV PORT=8787
 ENV GNOKEY_BIN=/usr/local/bin/gnokey
