@@ -49,6 +49,7 @@ function loadOrInitState(stateFile) {
     return {
       rateBuckets: new Map(),
       inFlight: new Set(),
+      pending: new Map(Object.entries(parsed.pending || {})),
       idempotency: new Map(Object.entries(parsed.idempotency || {})),
       spentUgnotToday: parsed.dayKey === today ? Number(parsed.spentUgnotToday || 0) : 0,
       dayKey: today,
@@ -58,6 +59,7 @@ function loadOrInitState(stateFile) {
   return {
     rateBuckets: new Map(),
     inFlight: new Set(),
+    pending: new Map(),
     idempotency: new Map(),
     spentUgnotToday: 0,
     dayKey: today,
@@ -74,6 +76,7 @@ function persistState(state) {
     JSON.stringify({
       dayKey: state.dayKey,
       spentUgnotToday: state.spentUgnotToday,
+      pending: Object.fromEntries(state.pending.entries()),
       idempotency: Object.fromEntries(state.idempotency.entries()),
     })
   );
@@ -271,6 +274,7 @@ function createServer(opts = {}) {
           voteRealm: cfg.voteRealm,
           dailyBudgetUgnot: cfg.dailyBudgetUgnot,
           spentUgnotToday: state.spentUgnotToday,
+          pendingReconciliations: state.pending.size,
         })
       );
     }
@@ -336,17 +340,24 @@ function createServer(opts = {}) {
             err.httpStatus = 503;
             throw err;
           }
+          if (!Boolean(body.simulateOnly)) {
+            state.pending.set(idemKey, { pollId: body.pollId, startedAt: Date.now() });
+            persistState(state);
+          }
           const out = await executor(body, Boolean(body.simulateOnly));
+          state.pending.delete(idemKey);
           if (out.relayed) {
             state.spentUgnotToday += GAS_FEE_UGNOT;
             state.idempotency.set(idemKey, out);
-            persistState(state);
           }
+          persistState(state);
           return out;
         });
         res.writeHead(200, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(result));
       } catch (e) {
+        state.pending.delete(idemKey);
+        persistState(state);
         // Failed transactions are NOT cached in idempotency, allowing safe retry.
         res.writeHead(e.httpStatus || 502, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: e.message }));

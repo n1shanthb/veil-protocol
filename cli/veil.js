@@ -352,6 +352,26 @@ func TestVeilCLIProof(cur realm, t *testing.T) {
       ? ["-root-dir", "E:\\toolchains\\gno"]
       : [];
 
+  const repoCoreDir = path.resolve(__dirname, "..", "gno", "p", "groth16").replace(/\\/g, "/");
+  let hasParentGnowork = false;
+  let probe = dir;
+  for (let i = 0; i < 8; i++) {
+    if (fs.existsSync(path.join(probe, "gnowork.toml"))) {
+      hasParentGnowork = true;
+      break;
+    }
+    const parent = path.dirname(probe);
+    if (parent === probe) break;
+    probe = parent;
+  }
+  const tmpWork = path.join(dir, "gnowork.toml");
+  const tmpCore = path.join(dir, ".veil_core_tmp");
+  const createdTmpWork = !hasParentGnowork && fs.existsSync(repoCoreDir);
+  if (createdTmpWork) {
+    fs.cpSync(repoCoreDir, tmpCore, { recursive: true });
+    fs.writeFileSync(tmpWork, `[workspace]\nmembers = [\n  ".",\n  "./.veil_core_tmp",\n]\n`);
+  }
+
   try {
     execFileSync(gnoBin, ["test", "-v", ...rootArgs, "."], {
       cwd: dir,
@@ -359,6 +379,8 @@ func TestVeilCLIProof(cur realm, t *testing.T) {
     });
   } finally {
     if (fs.existsSync(tmpTest)) fs.unlinkSync(tmpTest);
+    if (createdTmpWork && fs.existsSync(tmpWork)) fs.unlinkSync(tmpWork);
+    if (createdTmpWork && fs.existsSync(tmpCore)) fs.rmSync(tmpCore, { recursive: true, force: true });
   }
 }
 

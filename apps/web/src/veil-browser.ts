@@ -14,7 +14,10 @@ export const CORE_PKG_PATH =
   "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2";
 export const VOTE_REALM_PATH =
   "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3";
+export const REGISTRY_REALM_PATH =
+  "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1";
 export const ONYX_RPC = "https://rpc.onyx.testnets.gno.land:443";
+export const EXPLORER_BASE = "https://onyx.gno.land";
 
 export function parseFieldDecimal(decStr: string | number | bigint, modulus: bigint, label: string): string {
   if (typeof decStr === "string" && !/^(0|[1-9][0-9]*)$/.test(decStr)) {
@@ -220,6 +223,106 @@ export async function fetchPaginatedPollCommitmentsAndVerifyRoot(params: {
     throw new Error(`Reconstructed root ${rootHex} does not match poll snapshot ${expected}`);
   }
   return { commitmentsHex, group, rootHex };
+}
+
+export async function queryOnyxEval(expr: string, rpc = ONYX_RPC): Promise<string> {
+  const endpoint = rpc.replace(":443", "");
+  const dataB64 = btoa(expr);
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "abci_query",
+      params: { path: "vm/qeval", data: dataB64 },
+    }),
+  });
+  if (!res.ok) throw new Error(`Onyx RPC HTTP ${res.status}`);
+  const j = await res.json();
+  const resp = j?.result?.response;
+  if (!resp || resp.ResponseBase?.Error) {
+    throw new Error(resp?.ResponseBase?.Log || "Onyx ABCI query failed");
+  }
+  const valB64 = resp.ResponseBase?.Data;
+  if (!valB64) return "";
+  return atob(valB64);
+}
+
+export function parseGnoStringResult(raw: string): string {
+  const m = raw.match(/^\("([\s\S]*)"\s+string\)$/);
+  if (!m) return raw.trim();
+  return m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+}
+
+export function parseGnoUintResult(raw: string): number {
+  const m = raw.match(/^\((\d+)\s+uint64\)$/);
+  return m ? Number(m[1]) : 0;
+}
+
+export async function fetchOnyxRegistryRecords(rpc = ONYX_RPC): Promise<string[]> {
+  const raw = await queryOnyxEval(`${REGISTRY_REALM_PATH}.ListVerifiersPaged(0, 20)`, rpc);
+  const txt = parseGnoStringResult(raw);
+  return txt.split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
+export async function fetchOnyxPollState(pollId: number, rpc = ONYX_RPC) {
+  const [t0Raw, t1Raw, commRaw] = await Promise.all([
+    queryOnyxEval(`${VOTE_REALM_PATH}.GetPollTally(${pollId}, 0)`, rpc),
+    queryOnyxEval(`${VOTE_REALM_PATH}.GetPollTally(${pollId}, 1)`, rpc),
+    queryOnyxEval(`${VOTE_REALM_PATH}.GetPollCommitmentsPaged(${pollId}, 0, 100)`, rpc),
+  ]);
+  const commitments = parseGnoStringResult(commRaw)
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => /^[0-9a-f]{64}$/i.test(s));
+  const members = commitments.map((h) => BigInt("0x" + h));
+  const group = new Group(members);
+  const rootHex = BigInt(group.root).toString(16).padStart(64, "0");
+  return {
+    tallies: [parseGnoUintResult(t0Raw), parseGnoUintResult(t1Raw)],
+    commitments,
+    rootHex,
+    group,
+  };
+}
+
+export async function verifyArtifactIntegrity(
+  bytes: Uint8Array,
+  kind: "wasm" | "zkey"
+): Promise<{ ok: boolean; sha256: string; reason?: string }> {
+  if (!bytes || bytes.length < 8) {
+    return { ok: false, sha256: "", reason: "Artifact is empty or truncated." };
+  }
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const sha256 = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  if (kind === "wasm") {
+    const isWasm = bytes[0] === 0x00 && bytes[1] === 0x61 && bytes[2] === 0x73 && bytes[3] === 0x6d;
+    if (!isWasm) return { ok: false, sha256, reason: "Invalid WASM magic header." };
+  } else {
+    const isZkey = bytes[0] === 0x7a && bytes[1] === 0x6b && bytes[2] === 0x65 && bytes[3] === 0x79;
+    if (!isZkey) return { ok: false, sha256, reason: "Invalid zkey magic header." };
+  }
+  return { ok: true, sha256 };
+}
+
+export function formatFriendlyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("nullifier already used")) {
+    return "This identity has already voted in this poll (nullifier already spent on-chain).";
+  }
+  if (msg.includes("non-canonical")) {
+    return "Invalid field element: value must be a canonical BN254 scalar (< r).";
+  }
+  if (msg.includes("daily relayer fee budget")) {
+    return "The sponsored relayer's daily fee budget is exhausted. Try again tomorrow or submit directly with gnokey.";
+  }
+  if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+    return "Network request failed. Check that the Onyx RPC or Relayer endpoint is reachable over HTTPS/HTTP.";
+  }
+  return msg;
 }
 
 export { Identity, Group, generateProof, verifyProof, unpackGroth16Proof, snarkjs };

@@ -23,10 +23,15 @@
 
 - **Network Check:** `https://rpc.onyx.testnets.gno.land:443/status` -> `network: onyx-1`, `height: 1445390`, `version: v1.8.0-rc.1`.
 - **Wallet Balance:** `275,291,500 ugnot`.
-- **On-Chain Source Integrity (`vm/qfile` vs local `main`):**
-  - On Windows (`CRLF` working tree), raw file SHA-256 differs from LF-normalized `vm/qfile` output. Both `rawSha256` and `lfSha256` are recorded in [`docs/RELEASE_MANIFEST.json`](./RELEASE_MANIFEST.json).
-  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2/groth16.gno`: **Active & Exact LF Match** (`lfSha256`: `700e35fc3a521ba979eb7bc7f9602308c9f10a1f881f5c32a54d55d4063d5917`, `rawSha256`: `881a20a5eb295d08dabf3c0d41d8dc47d900d4d62096c1f270a01b1350b67931`).
-  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2/semaphore.gno`: **Active & Exact LF Match** (`lfSha256`: `ebd9fcb6b3781f1363fafc4571d954ccfa51834d253ee93474cc9c01b8f0ee10`, `rawSha256`: `c02a60583d3bdc61d0ff301761bee29c2db19dd1ff3743378ce992c0f93f0ca1`).
+- **On-Chain Source Integrity (`vm/qfile` vs local `main`, LF-normalized):**
+  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2/groth16.gno`: **Active & Exact LF Match** (`sha256: 700e35fc3a521ba979eb7bc7f9602308c9f10a1f881f5c32a54d55d4063d5917`)
+  - `gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2/semaphore.gno`: **Active & Exact LF Match** (`sha256: ebd9fcb6b3781f1363fafc4571d954ccfa51834d253ee93474cc9c01b8f0ee10`)
+  - `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3/veil_vote.gno`: **Active & Exact LF Match** (`sha256: c3ea4196dc81ce024daa88d4844516ddc2e989eac99239c22425df9926592eae`)
+  - `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1/veil_registry.gno`: **Active & Exact LF Match** (`sha256: ba8145df7c4ff21a79d16ade40e8857b20fd29dd089a610eef21678f300d440f`)
+  - `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier/verifier.gno`: **Active & Exact LF Match** (`sha256: cc6d643de2328aaefe11029bdb9f92b995cd1ff66beaa118a7b5a485c936bc47`)
+
+> [!IMPORTANT]
+> **Trusted Root Publisher Limitation (V1):** `veil_vote/v3` relies on a designated `RootPublisher` address (`g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04` for Poll #1) to publish the LeanIMT root matching the group's commitments. While `CreatePoll` freezes the published root and membership count snapshot, voters must verify that the published root matches the reconstructed `GetPollCommitmentsPaged` commitments (performed automatically by `sdk` and Veil Studio).
 
 ---
 
@@ -34,11 +39,11 @@
 
 | Package Path | Chain / Height | Tx Hash | Gas Used | Fee | GPAS Status |
 | :--- | :---: | :--- | :---: | :---: | :--- |
-| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3` | `onyx-1` / `1445403` | `n8gsscfoGHMyEy5p0yj9cDlg/M9Io5gWcH9Numi5cOw=` | `47,790,095` | `2,000,000 ugnot` | `pass` (`at: 2026-11-27T07:06:54Z`, no `enable_at`, `On chain` empty) |
-| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1` | `onyx-1` / `1445405` | `Z3nPuj8AoPVXdPOuWx3czo+Bk9dJQPhbVpNRsbJzJkw=` | `17,058,134` | `1,000,000 ugnot` | `pass` (`at: 2026-11-27T07:07:00Z`, no `enable_at`, `On chain` empty) |
-| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier` | `onyx-1` / `1445406` | `2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=` | `6,480,793` | `1,000,000 ugnot` | `pass` (`at: 2026-11-27T07:07:06Z`, no `enable_at`, `On chain` empty) |
+| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3` | `onyx-1` / `1445403` | `n8gsscfoGHMyEy5p0yj9cDlg/M9Io5gWcH9Numi5cOw=` | `47,790,095` | `2,000,000 ugnot` | `pass` (`07:06:54Z`) -> **Active on-chain** (`vm/qfile` & `MsgCall` verified) |
+| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1` | `onyx-1` / `1445405` | `Z3nPuj8AoPVXdPOuWx3czo+Bk9dJQPhbVpNRsbJzJkw=` | `17,058,134` | `1,000,000 ugnot` | `pass` (`07:07:00Z`) -> **Active on-chain** (`vm/qfile` & `MsgCall` verified) |
+| `gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier` | `onyx-1` / `1445406` | `2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=` | `6,480,793` | `1,000,000 ugnot` | `pass` (`07:07:06Z`) -> **Active on-chain** (`vm/qfile` & `MsgCall` verified) |
 
-- **GPAS Enabler Check:** Queried `vm/qfile` on `onyx-1` for all three realms plus unrelated `gno.land/r/g1h2fd0ykqkfgh6heggn6uh0r9qnxz9ujpka5fce/tavernpay` (`pass` at `07:16:48Z`); all return `package ... is not available`. GPAS has passed all checks, but its on-chain enabler has not yet committed the enablement transactions.
+- **Historical GPAS Note:** All three RC2 realms passed GPAS checks at `07:06:54Z`–`07:07:06Z` and were subsequently enabled on-chain on `onyx-1` (confirmed live at `11:33 UTC` / `17:03+05:30` via `vm/qfile`, `vm/qeval`, and `MsgCall` execution).
 
 ---
 
@@ -70,6 +75,12 @@
 - **Queries:** `GetVerifier(1)` and `ListVerifiersPaged(0, 10)` returned record `#1` (`groth16/bn254|1|v1.0.0|active`).
 
 ### Step 6 — Browser-to-Onyx Sponsored Transaction (`relayer/server.js`)
-- Sponsored `Vote(1, 10, ..., option=1)` (`onyx-voter-2`) relayed via `http://127.0.0.1:8787/api/relay/vote`:
+- **CLI-Triggered Relayer Test (`veil-dev`):** Sponsored `Vote(1, 10, ..., option=1)` (`onyx-voter-2`):
   - Tx Hash: `aVihcitjgHh8xfk6Y8elCeSKU4ypRO3l/TyK190+qTY=` | Height: `1450086` | Gas Used: `16,846,339`
-  - Post-tx state: `GetPollTally(1, 0)` -> `(1 uint64)`, `GetPollTally(1, 1)` -> `(1 uint64)`.
+- **Dedicated Relayer Wallet (`veil-relayer`, `g1faqk82qzesyuhu6jp2nk666r8yd4cg3a2p59ey`):** Funded with `15,000,000 ugnot` at Height `1450339` (Tx `1fF6IM1XmHK0uw2udrW/55xgmYOeeYKhZNrIV39Sy8U=`).
+- **Real Browser-to-Onyx E2E (`apps/web/e2e_onyx.mjs`, Chromium + Firefox):**
+  - **Chromium:** Synced live Poll #1, verified reconstructed LeanIMT root (`14adde57e4863effcdf17af37edb304fee846e4e9d8da8ebed9844be2f8cdcee`), generated Semaphore v4 proof in `3,228ms`, submitted through `veil-relayer` -> committed Tx `i68sfeCLwFKrZPYbBGdyzEfyv4aFat1iMtBIwg4xBjo=` at Height `1450366` (`16,842,592` gas), and confirmed updated on-chain tally (`Yes=2, No=1`).
+  - **Firefox:** Synced live Poll #1 (`Yes=2, No=1`), verified reconstructed root, and confirmed live `veil_registry/v1` records.
+
+> [!NOTE]
+> **Simulation Rejections vs. Committed Failed Transactions:** Negative test cases above (tampered proof, wrong public signal, scalar alias `r + 0x23`, duplicate nullifier, invalid option `99`, unauthorized namespace) were rejected during `gnokey` transaction simulation / `CheckTx` (`HEIGHT: 0`, no `TX HASH`, 0 committed failed transactions). Only valid state-transition transactions were committed into `onyx-1` blocks (`HEIGHT > 0`).

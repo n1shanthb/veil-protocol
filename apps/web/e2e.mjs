@@ -33,9 +33,10 @@ async function runBrowserSuite(browserType, name, doRealRelayedVote) {
   const title = await page.title();
   assert(title.includes("VEIL PROTOCOL"), `Unexpected title: ${title}`);
 
-  // 1. Identity restore
-  await page.fill("#id-secret", "veil-phase2-member-1");
+  // 1. Identity restore & add to local group
+  await page.fill("#id-secret", "e2e-ci-test-identity");
   await page.click("#btn-restore-id");
+  await page.click("#btn-admin-add-member");
 
   // 2. Select Poll 42, Option 2 ("No"), generate REAL client-side Semaphore v4 proof
   await page.selectOption("#poll-select", "42");
@@ -73,7 +74,7 @@ async function runBrowserSuite(browserType, name, doRealRelayedVote) {
 
   // 4. Page reload preserves clean state & identity restore works
   await page.reload({ waitUntil: "networkidle" });
-  await page.fill("#id-secret", "veil-phase2-member-1");
+  await page.fill("#id-secret", "e2e-ci-test-identity");
   await page.click("#btn-restore-id");
 
   // 5. Veil Studio: Forge (import tracked VK)

@@ -1,10 +1,15 @@
 import {
   CORE_PKG_PATH,
+  EXPLORER_BASE,
   ONYX_RPC,
+  REGISTRY_REALM_PATH,
   VOTE_REALM_PATH,
   Group,
   Identity,
   encodePublicInputs,
+  fetchOnyxPollState,
+  fetchOnyxRegistryRecords,
+  formatFriendlyError,
   generateGnoVerifierSource,
   generateProof,
   deriveCanonicalScope,
@@ -13,6 +18,7 @@ import {
   unpackGroth16Proof,
   validateAndConvertProof,
   validateAndConvertVK,
+  verifyArtifactIntegrity,
   verifyProof,
 } from "./veil-browser";
 
@@ -27,25 +33,33 @@ interface PollState {
   closed: boolean;
 }
 
-const DEFAULT_IDENTITIES = [
-  new Identity("veil-phase2-member-0"),
-  new Identity("veil-phase2-member-1"),
-  new Identity("veil-phase2-member-2"),
+const INITIAL_IDENTITIES = [
+  new Identity(),
+  new Identity(),
+  new Identity(),
 ];
 
 const state = {
   tab: "vote" as TabId,
   mode: "local" as "local" | "onyx",
   onyxHeight: "checking...",
-  relayerUrl: "http://127.0.0.1:8787",
-  // Vote state (Local Dev Mode mirrors veil_vote/v1 semantics; Onyx Mode builds real tx calls)
-  identitySecret: "veil-phase2-member-0",
-  identity: DEFAULT_IDENTITIES[0],
+  onyxRegistryRecords: [] as string[],
+  onyxPoll1Tallies: [0, 0] as [number, number],
+  onyxPoll1Root: "",
+  onyxPoll1Count: 0,
+  onyxPoll1Commitments: [] as string[],
+  onyxLastTxHash: "",
+  onyxSyncError: "",
+  artifactCheckStatus: "Not checked",
+  relayerUrl: (import.meta as any).env?.VITE_RELAYER_URL || "http://127.0.0.1:8787",
+  // Vote state (Local Dev Mode simulates veil_vote/v3; Onyx Mode submits to onyx-1)
+  identitySecret: "",
+  identity: INITIAL_IDENTITIES[0],
   groups: [
     {
       id: 1,
       depth: 10,
-      members: DEFAULT_IDENTITIES.map((i) => i.commitment.toString()),
+      members: INITIAL_IDENTITIES.map((i) => i.commitment.toString()),
     },
   ],
   polls: [
@@ -96,6 +110,9 @@ const state = {
 };
 
 function currentGroup() {
+  if (state.mode === "onyx" && state.onyxPoll1Commitments.length > 0) {
+    return { id: 1, depth: 10, members: state.onyxPoll1Commitments };
+  }
   return state.groups[0];
 }
 
@@ -113,8 +130,32 @@ async function refreshOnyxStatus() {
     const r = await fetch(`${ONYX_RPC.replace(":443", "")}/status`);
     const j = await r.json();
     state.onyxHeight = `${j.result.node_info.network} @ #${j.result.sync_info.latest_block_height} (${j.result.build_version})`;
-  } catch {
-    state.onyxHeight = "unreachable";
+    const [reg, poll1] = await Promise.all([
+      fetchOnyxRegistryRecords(ONYX_RPC),
+      fetchOnyxPollState(1, ONYX_RPC),
+    ]);
+    state.onyxRegistryRecords = reg;
+    state.onyxPoll1Tallies = [poll1.tallies[0], poll1.tallies[1]];
+    state.onyxPoll1Root = poll1.rootHex;
+    state.onyxPoll1Count = poll1.commitments.length;
+    state.onyxPoll1Commitments = poll1.commitments.map((h) => BigInt("0x" + h).toString());
+    const existingPoll1 = state.polls.find((p) => p.id === 1);
+    if (existingPoll1) {
+      existingPoll1.tallies = [poll1.tallies[0], poll1.tallies[1]];
+    } else {
+      state.polls.unshift({
+        id: 1,
+        groupId: 1,
+        title: "Onyx Live Poll #1",
+        options: ["Yes", "No"],
+        tallies: [poll1.tallies[0], poll1.tallies[1]],
+        closed: false,
+      });
+    }
+    state.onyxSyncError = "";
+  } catch (e) {
+    state.onyxHeight = state.onyxHeight === "checking..." ? "unreachable" : state.onyxHeight;
+    state.onyxSyncError = formatFriendlyError(e);
   }
   render();
 }
@@ -196,17 +237,30 @@ function renderVoteTab(): string {
             .join("")}
         </select>
 
-        <div class="row">
-          <button class="primary" id="btn-gen-proof">Generate Semaphore Proof (Client-Side)</button>
-          ${
-            state.lastVoteProof
-              ? `<button class="secondary" id="btn-submit-local">Submit Vote (${state.mode === "local" ? "Local State" : "Simulate"})</button>
-                 <button class="secondary" id="btn-submit-relayer">Submit via Sponsored Relayer</button>`
-              : ""
-          }
-        </div>
-        ${state.voteStatus ? `<div class="status-box">${esc(state.voteStatus)}</div>` : ""}
+      <div class="row">
+        <button class="primary" id="btn-gen-proof">Generate Semaphore Proof (Browser-Local)</button>
+        ${
+          state.lastVoteProof
+            ? `<button class="secondary" id="btn-submit-local">${state.mode === "local" ? "Submit Vote (Browser-Local State)" : "Simulate Vote (Browser-Local)"}</button>
+               <button class="secondary" id="btn-submit-relayer">Submit On-Chain via Relayer (Onyx)</button>`
+            : ""
+        }
+        <button class="secondary" id="btn-sync-onyx">Sync Live Onyx State</button>
       </div>
+      ${state.voteStatus ? `<div class="status-box">${esc(state.voteStatus)}</div>` : ""}
+      ${
+        state.onyxLastTxHash
+          ? `<div class="status-box">On-Chain Onyx Tx: <a href="${EXPLORER_BASE}/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3" target="_blank" rel="noopener"><code>${esc(state.onyxLastTxHash)}</code></a></div>`
+          : ""
+      }
+      <div class="status-box" style="margin-top:8px">
+        <strong>Live Onyx Poll #1 (<code>veil_vote/v3</code>):</strong>
+        Yes=${state.onyxPoll1Tallies[0]}, No=${state.onyxPoll1Tallies[1]} |
+        Snapshot Members=${state.onyxPoll1Count} |
+        Reconstructed Root=<code>${esc(state.onyxPoll1Root || "syncing...")}</code>
+        ${state.onyxSyncError ? `<br/><span style="color:var(--status-err)">${esc(state.onyxSyncError)}</span>` : ""}
+      </div>
+    </div>
 
       <div>
         <label>Current Poll Tallies</label>
@@ -333,6 +387,8 @@ function renderDeploymentsTab(): string {
         <tr><td><a href="https://onyx.gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier" target="_blank" rel="noopener">cubic_check_verifier</a></td><td>Forge Verifier</td><td>1445406</td><td><code>2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=</code></td><td>6,480,793</td><td><strong>Active</strong></td></tr>
       </tbody>
     </table>
+    <h3 style="margin-top:16px">Live On-Chain Registry (<code>${REGISTRY_REALM_PATH}</code>)</h3>
+    <pre>${esc(state.onyxRegistryRecords.length ? state.onyxRegistryRecords.join("\n") : "No records loaded yet (click Sync Live Onyx State on Vote tab).")}</pre>
   </div>`;
 }
 
@@ -429,6 +485,9 @@ function bindEvents() {
   if (toggle) {
     toggle.onclick = () => {
       state.mode = state.mode === "local" ? "onyx" : "local";
+      if (state.mode === "onyx" && state.polls.some((p) => p.id === 1)) {
+        state.selectedPollId = 1;
+      }
       render();
     };
   }
@@ -470,6 +529,11 @@ function bindEvents() {
       state.selectedOption = Number(optSel.value);
       render();
     };
+  }
+
+  const syncOnyxBtn = document.getElementById("btn-sync-onyx");
+  if (syncOnyxBtn) {
+    syncOnyxBtn.onclick = () => refreshOnyxStatus();
   }
 
   const genProofBtn = document.getElementById("btn-gen-proof");
@@ -554,9 +618,15 @@ function bindEvents() {
           }),
         });
         const j = await res.json();
-        state.voteStatus = `Relayer (${res.status}): ${JSON.stringify(j)}`;
+        if (j.txHash) {
+          state.onyxLastTxHash = j.txHash;
+          refreshOnyxStatus();
+        }
+        state.voteStatus = j.error
+          ? `Relayer (${res.status}): ${formatFriendlyError(j.error)}`
+          : `Relayer (${res.status}): ${JSON.stringify(j)}`;
       } catch (e: any) {
-        state.voteStatus = `Relayer unreachable at ${state.relayerUrl}: ${e.message}`;
+        state.voteStatus = `Relayer unreachable at ${state.relayerUrl}: ${formatFriendlyError(e)}`;
       }
       render();
     };
