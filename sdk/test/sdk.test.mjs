@@ -139,6 +139,61 @@ test("11. RPC failures and malformed responses throw typed VeilError", async () 
   }
 });
 
+test("12. Paginated poll snapshot reconstruction & root verification", async () => {
+  const m0 = sdk.createIdentity("page-0");
+  const m1 = sdk.createIdentity("page-1");
+  const m2 = sdk.createIdentity("page-2");
+  const grp = new sdk.Group([m0.commitment, m1.commitment, m2.commitment]);
+  const expectedRoot = BigInt(grp.root).toString(16).padStart(64, "0");
+  const pages = [
+    [m0.commitment.toString(16).padStart(64, "0"), m1.commitment.toString(16).padStart(64, "0")],
+    [m2.commitment.toString(16).padStart(64, "0")],
+  ];
+  const srv = http.createServer((req, res) => {
+    const u = new URL(req.url, "http://127.0.0.1");
+    const data = decodeURIComponent(u.searchParams.get("data") || "");
+    if (data.includes("GetPollSnapshotCount")) {
+      const b64 = Buffer.from(`(3 int)`).toString("base64");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ result: { response: { ResponseBase: { Data: b64 } } } }));
+      return;
+    }
+    const m = data.match(/GetPollCommitmentsPaged\(\d+,(\d+),(\d+)\)/);
+    const off = m ? Number(m[1]) : 0;
+    const body = off === 0 ? pages[0].join("\n") : off === 2 ? pages[1].join("\n") : "";
+    const b64 = Buffer.from(`("${body.replace(/\n/g, "\\n")}" string)`).toString("base64");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ result: { response: { ResponseBase: { Data: b64 } } } }));
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const port = srv.address().port;
+  try {
+    const res = await sdk.fetchPaginatedPollCommitmentsAndVerifyRoot({
+      rpcUrl: `http://127.0.0.1:${port}`,
+      realmPath: "gno.land/r/test/veil_vote/v3",
+      pollId: 1,
+      expectedRootHex: expectedRoot,
+      pageSize: 2,
+    });
+    assert.equal(res.commitmentsHex.length, 3);
+    assert.equal(res.rootHex, expectedRoot);
+
+    await assert.rejects(
+      () =>
+        sdk.fetchPaginatedPollCommitmentsAndVerifyRoot({
+          rpcUrl: `http://127.0.0.1:${port}`,
+          realmPath: "gno.land/r/test/veil_vote/v3",
+          pollId: 1,
+          expectedRootHex: "00".repeat(31) + "ff",
+          pageSize: 2,
+        }),
+      (e) => e instanceof sdk.VeilError && e.code === "SNAPSHOT_ROOT_MISMATCH"
+    );
+  } finally {
+    srv.close();
+  }
+});
+
 test.after(async () => {
   if (globalThis.curve_bn128) {
     await globalThis.curve_bn128.terminate();

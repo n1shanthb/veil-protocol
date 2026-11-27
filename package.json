@@ -9,7 +9,7 @@
     "test:gno": "gno test -v ./gno/...",
     "test:diff": "node ./scripts/differential_test.js"
   },
-  "license": "Apache-2.0",
+  "license": "MIT",
   "dependencies": {
     "@semaphore-protocol/group": "4.13.0",
     "@semaphore-protocol/identity": "4.13.0",

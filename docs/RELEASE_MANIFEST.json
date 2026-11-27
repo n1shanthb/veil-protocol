@@ -1,8 +1,6 @@
 {
-  "release": "veil-v1-rc1",
+  "release": "veil-v1-rc2",
   "repository": "https://github.com/n1shanthb/veil-protocol",
-  "verifiedCommit": "c94e11dbf64eb3a0205a03bd683c38b0d892ccdc",
-  "ciRunUrl": "https://github.com/n1shanthb/veil-protocol/actions/runs/45826855505",
   "gnoVersion": "v1.8.0-rc.1",
   "gnoCommit": "fc79041f4cd1a7b3ed4b316dc5ac14162eb78730",
   "network": "onyx-1",
@@ -11,30 +9,32 @@
   "packages": [
     {
       "pkgPath": "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",
-      "role": "Veil Core (Hardened Groth16/BN254)",
+      "role": "Veil Core (Frozen Groth16/BN254)",
       "onyxHeight": 1426060,
       "onyxTxHash": "U61xv6bC85z9VopmocG5DV7iumLhEOEtCLC8TEESZPU=",
       "onyxGasUsed": 59348160,
-      "gpasStatus": "review",
+      "gpasStatus": "pass",
+      "gpasPassedAt": "2026-11-26T17:36:36Z",
       "matchesLocalSource": true,
       "files": {
         "gnomod.toml": "210b934f4045df37e9b0ddec97c68f24c752cbddfcaf8c364ed1696fb0b33fe5",
-        "groth16.gno": "a7996b8dfd2fd414dc4bf371096e6d828ceef377034c0db21f49166cb5ea61c2",
+        "groth16.gno": "881a20a5eb295d08dabf3c0d41d8dc47d900d4d62096c1f270a01b1350b67931",
         "groth16_test.gno": "5a6bc6b6516f9cdf32ba4f3d22e7f9f0d886316d553b70adaa689e0b7f1a69c6",
         "differential_test.gno": "dedc4dee094fd995ee320ca36881ced5f2a6b6e2dbacb8526cbff5fc373a6be8",
-        "hardening_test.gno": "7c8efb5f8dc9a1ce5db5553a284b23268f142a3bdb348ae2ad9fe432287a56a7"
+        "hardening_test.gno": "9942dae50aff6644cef659ed770a0f1c256ef89a785c50397c408ba4b2f9b33b"
       }
     },
     {
       "pkgPath": "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2",
-      "role": "Veil Primitives (Semaphore v4)",
+      "role": "Veil Primitives (Frozen Semaphore v4)",
       "dependsOn": [
         "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2"
       ],
       "onyxHeight": 1426645,
       "onyxTxHash": "yhsY8yPnhZMsWQXr2sDO1GHuLxQr/XzZi9KLr8KZ9ME=",
       "onyxGasUsed": 24166378,
-      "gpasStatus": "review",
+      "gpasStatus": "pass",
+      "gpasPassedAt": "2026-11-26T18:17:28Z",
       "matchesLocalSource": true,
       "files": {
         "gnomod.toml": "29d4fe79c2f29c1841c12a94b44d1d4cf52ec7f5617e91ac5984ad0d4ec51e0d",
@@ -45,40 +45,36 @@
     },
     {
       "pkgPath": "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3",
-      "role": "Veil Vote Reference Realm (Final Hardened V1)",
+      "role": "Veil Vote Reference Realm (Consolidated Resource-Hardened V1)",
       "dependsOn": [
         "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",
         "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2"
       ],
-      "gpasStatus": "not_submitted_pending_dependencies",
-      "localDeployHeight": 416,
-      "localDeployTxHash": "GscVoulR15AyegucqR1+yWOQKKSEMnd4sT7PV41HFnI=",
+      "gpasStatus": "ready_for_submission",
       "files": {
         "gnomod.toml": "8f4ed5a4cc0a70b9dadfba7ed1cdf45e0f48df5ebf61d93fc43653d6b7b5f876",
-        "veil_vote.gno": "dabdc66b22b9c203b90d5b3d3eafe3797c508b04834f22be89097f013d7adc2a",
-        "veil_vote_test.gno": "b4711adaa96893c4b06607af91e21ea2a30274d641a596cb0668ad987f9b4a9f"
+        "veil_vote.gno": "dda4d36dd61366bb156d01b138ab169cd609a0a04821464baabc13492cd5f692",
+        "veil_vote_test.gno": "54d986389d29dc5c59f5ecbcdaf25bae30f85f369fa0d3eff9da1c2679a089b2"
       }
     },
     {
       "pkgPath": "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1",
-      "role": "Veil Verifier Registry (Final V1)",
+      "role": "Veil Verifier Registry (Consolidated Resource-Hardened V1)",
       "dependsOn": [
         "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2"
       ],
-      "gpasStatus": "not_submitted_pending_dependencies",
-      "localDeployHeight": 432,
-      "localDeployTxHash": "+OnkPKYJHCc3hwGi5EuDZb7KGW70tvECvjaGKBSPzuo=",
+      "gpasStatus": "ready_for_submission",
       "files": {
         "gnomod.toml": "8b70d91102ca518f282cee186fd3cf271132aed2c54c2e6d9546a9aa94ef9b53",
-        "veil_registry.gno": "fc8f57067ae2d5995fc0d1edd4bc2fc17b3c5c5b0b0150b14ad130d10d09882b",
-        "veil_registry_test.gno": "9c053e6e2de2315b65596bff88bb40f45258fe18d5eef8d264dfa719efc2e1b5"
+        "veil_registry.gno": "cb486d2b0132e0e80c53f51b62b2bdb4a58067c0ac8012bb9a692346a03dcbc1",
+        "veil_registry_test.gno": "7e61928591131b4cf7d400940789e4cda61964b52c3499d73f3c97dd254c0eed"
       }
     }
   ],
   "offchainFiles": {
-    "sdk/src/index.ts": "af11b69c2c2b14ca68a3e3c3ff78dec8e4ee4042014b1fc2b5bef1137384711e",
+    "sdk/src/index.ts": "b2d1445e3ec90ae6c5cb449ef983deb5ead098cf3f75884960148bb8a1850fea",
     "relayer/server.js": "f05ec4312e860eb990833c3b88437919233a9fa40c6919e4040f1062ecc13a9b",
-    "cli/veil.js": "c517b29e55c61d99b9e56f876b158ee10e965b74c7073c73c227204734c4db13"
+    "cli/veil.js": "d8c24b57e550bd4479d6841a190ab023a988930d81d3a45e9c6eb5bf66ae768a"
   },
   "upstreamSemaphore": {
     "version": "4.13.0",
