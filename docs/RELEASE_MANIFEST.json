@@ -50,7 +50,11 @@
         "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",
         "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2"
       ],
-      "gpasStatus": "ready_for_submission",
+      "onyxHeight": 1445403,
+      "onyxTxHash": "n8gsscfoGHMyEy5p0yj9cDlg/M9Io5gWcH9Numi5cOw=",
+      "onyxGasUsed": 47790095,
+      "gpasStatus": "pass",
+      "gpasPassedAt": "2026-11-27T07:06:54Z",
       "files": {
         "gnomod.toml": "8f4ed5a4cc0a70b9dadfba7ed1cdf45e0f48df5ebf61d93fc43653d6b7b5f876",
         "veil_vote.gno": "dda4d36dd61366bb156d01b138ab169cd609a0a04821464baabc13492cd5f692",
@@ -63,12 +67,28 @@
       "dependsOn": [
         "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2"
       ],
-      "gpasStatus": "ready_for_submission",
+      "onyxHeight": 1445405,
+      "onyxTxHash": "Z3nPuj8AoPVXdPOuWx3czo+Bk9dJQPhbVpNRsbJzJkw=",
+      "onyxGasUsed": 17058134,
+      "gpasStatus": "pass",
+      "gpasPassedAt": "2026-11-27T07:07:00Z",
       "files": {
         "gnomod.toml": "8b70d91102ca518f282cee186fd3cf271132aed2c54c2e6d9546a9aa94ef9b53",
         "veil_registry.gno": "cb486d2b0132e0e80c53f51b62b2bdb4a58067c0ac8012bb9a692346a03dcbc1",
         "veil_registry_test.gno": "7e61928591131b4cf7d400940789e4cda61964b52c3499d73f3c97dd254c0eed"
       }
+    },
+    {
+      "pkgPath": "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier",
+      "role": "Forge-Generated Generic Groth16 Verifier (cubic_check)",
+      "dependsOn": [
+        "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2"
+      ],
+      "onyxHeight": 1445406,
+      "onyxTxHash": "2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=",
+      "onyxGasUsed": 6480793,
+      "gpasStatus": "pass",
+      "gpasPassedAt": "2026-11-27T07:07:06Z"
     }
   ],
   "offchainFiles": {
