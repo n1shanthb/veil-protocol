@@ -107,3 +107,28 @@ test("concurrent duplicates, failed tx retry, persistent budget & restart recove
     fs.rmSync(stateFile, { force: true });
   }
 });
+
+test("crash recovery loads pending transactions for reconciliation", async () => {
+  const stateFile = path.join(os.tmpdir(), `veil-relayer-crash-${Date.now()}.json`);
+  const today = new Date().toISOString().slice(0, 10);
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({
+      dayKey: today,
+      spentUgnotToday: 1_000_000,
+      pending: { "1:aa": { pollId: 1, startedAt: Date.now() } },
+      idempotency: {},
+    })
+  );
+  const srv = createServer({ stateFile, executor: async () => ({ relayed: false }) });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  try {
+    const h = await (await fetch(`${base}/health`)).json();
+    assert.equal(h.pendingReconciliations, 1);
+    assert.equal(h.spentUgnotToday, 1_000_000);
+  } finally {
+    srv.close();
+    fs.rmSync(stateFile, { force: true });
+  }
+});
