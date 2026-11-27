@@ -1,0 +1,24 @@
+:root {
+  /* Obsidian Emerald — Luminous Edition */
+  --veil-bg: #060807;
+  --veil-surface: #0C100E;
+  --veil-raised: #131916;
+  --veil-selected: #162921;
+  --veil-line: #26332C;
+  --veil-lineStrong: #34473D;
+  --veil-text: #F0F5F2;
+  --veil-muted: #9DAEA5;
+  --veil-subtle: #6E8077;
+  --veil-brand: #00E89D;
+  --veil-brandHover: #4DF3BA;
+  --veil-brandPressed: #00C484;
+  --veil-deep: #059669;
+  --veil-mint: #A4F9D5;
+  --veil-warn: #F5C76D;
+  --veil-error: #FDA4AF;
+  --veil-info: #9BC6F7;
+  --veil-ink: #060807;
+  --veil-font-display: "Space Grotesk", Inter, system-ui, sans-serif;
+  --veil-font-body: Inter, system-ui, sans-serif;
+  --veil-font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
