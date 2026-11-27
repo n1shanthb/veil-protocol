@@ -321,16 +321,16 @@ function renderPlaygroundTab(): string {
 function renderDeploymentsTab(): string {
   return `
   <div class="card">
-    <h2>Onyx Testnet Deployments &amp; GPAS Status</h2>
-    <p class="muted">Real on-chain AddPackage broadcasts on <code>onyx-1</code>. Packages remain in GPAS review queue until activated via <code>MsgEnablePackage</code>.</p>
+    <h2>Onyx Testnet Deployments (<code>onyx-1</code>)</h2>
+    <p class="muted">All 5 V1 RC2 packages are <strong>active</strong> on <code>onyx-1</code> (<code>https://rpc.onyx.testnets.gno.land:443</code>). Note: <code>veil_vote/v3</code> uses a trusted <code>RootPublisher</code> for group membership roots.</p>
     <table>
-      <thead><tr><th>Package Path</th><th>Version</th><th>Height</th><th>Tx Hash</th><th>Gas Used</th><th>GPAS Status</th></tr></thead>
+      <thead><tr><th>Package Path</th><th>Role</th><th>Height</th><th>Tx Hash</th><th>Gas Used</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td>gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2</td><td>Hardened Core</td><td>1426060</td><td>U61xv6bC85z9VopmocG5DV7iumLhEOEtCLC8TEESZPU=</td><td>59,348,160</td><td>in review queue</td></tr>
-        <tr><td>gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v1</td><td>Primitives</td><td>1426062</td><td>mxqRc626QF0xkVDz4wq7lPdBqO7W4C21EHvy1znI4Uc=</td><td>23,547,033</td><td>in review queue</td></tr>
-        <tr><td>gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v1</td><td>Vote Realm</td><td>1426064</td><td>VtbiZcm4THMczuVCQ0KRuevbXQgAsod5cNOh0zPLaXo=</td><td>29,954,182</td><td>in review queue</td></tr>
-        <tr><td>gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16</td><td>Phase 0</td><td>1422595</td><td>Lzw58UhljTFqrBYQIsSZdFwhdUo8RaHfm0ky9SjVM6o=</td><td>31,255,371</td><td>in review queue</td></tr>
-        <tr><td>gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_verifier</td><td>Phase 0</td><td>1422602</td><td>N1Z0qlZmpyleq3g3hs95+ss/d9Gx+FRz3SmEiDelvBo=</td><td>10,662,864</td><td>in review queue</td></tr>
+        <tr><td><a href="https://onyx.gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2" target="_blank" rel="noopener">groth16/v2</a></td><td>Core Verifier</td><td>1426060</td><td><code>U61xv6bC85z9VopmocG5DV7iumLhEOEtCLC8TEESZPU=</code></td><td>59,348,160</td><td><strong>Active</strong></td></tr>
+        <tr><td><a href="https://onyx.gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2" target="_blank" rel="noopener">semaphore/v2</a></td><td>Primitives</td><td>1426645</td><td><code>yhsY8yPnhZMsWQXr2sDO1GHuLxQr/XzZi9KLr8KZ9ME=</code></td><td>24,166,378</td><td><strong>Active</strong></td></tr>
+        <tr><td><a href="https://onyx.gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_vote/v3" target="_blank" rel="noopener">veil_vote/v3</a></td><td>Vote Realm</td><td>1445403</td><td><code>n8gsscfoGHMyEy5p0yj9cDlg/M9Io5gWcH9Numi5cOw=</code></td><td>47,790,095</td><td><strong>Active</strong></td></tr>
+        <tr><td><a href="https://onyx.gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1" target="_blank" rel="noopener">veil_registry/v1</a></td><td>Registry Realm</td><td>1445405</td><td><code>Z3nPuj8AoPVXdPOuWx3czo+Bk9dJQPhbVpNRsbJzJkw=</code></td><td>17,058,134</td><td><strong>Active</strong></td></tr>
+        <tr><td><a href="https://onyx.gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/cubic_check_verifier" target="_blank" rel="noopener">cubic_check_verifier</a></td><td>Forge Verifier</td><td>1445406</td><td><code>2UQcV5zMkm+5F7RzJ2qzRtdvuaRzpkSkvP7icJPS3FQ=</code></td><td>6,480,793</td><td><strong>Active</strong></td></tr>
       </tbody>
     </table>
   </div>`;
