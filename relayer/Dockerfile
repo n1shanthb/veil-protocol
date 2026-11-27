@@ -5,6 +5,7 @@ RUN git clone --depth 1 --branch v1.8.0-rc.1 https://github.com/gnolang/gno.git 
     && go build -o /usr/local/bin/gnokey ./cmd/gnokey
 
 FROM node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=gno-builder /usr/local/bin/gnokey /usr/local/bin/gnokey
 WORKDIR /app
 COPY relayer/server.js /app/server.js
