@@ -1,4 +1,5 @@
-FROM golang:1.24-bookworm AS gno-builder
+FROM golang:1.25-bookworm AS gno-builder
+ENV GOTOOLCHAIN=auto
 RUN git clone --depth 1 --branch v1.8.0-rc.1 https://github.com/gnolang/gno.git /tmp/gno \
     && cd /tmp/gno/gno.land \
     && go build -o /usr/local/bin/gnokey ./cmd/gnokey
