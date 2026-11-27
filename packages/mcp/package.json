@@ -1,0 +1,21 @@
+{
+  "name": "@veil-gno/mcp",
+  "version": "0.1.0",
+  "description": "Local stdio MCP server for Veil Protocol on Gno.land",
+  "bin": {
+    "veil-mcp": "./bin/veil-mcp.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/n1shanthb/veil-protocol.git",
+    "directory": "packages/mcp"
+  },
+  "license": "MIT"
+}
