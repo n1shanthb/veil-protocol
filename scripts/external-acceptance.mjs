@@ -67,9 +67,9 @@ try {
   console.log("8. deploy --dry-run: PASS");
 
   // 11. MCP tools/call
-  const mcpOut = execFileSync("npx", ["veil-mcp"], {
+  const mcpBin = path.join(tmp, "node_modules", "@veil-zk", "mcp", "bin", "veil-mcp.js");
+  const mcpOut = execFileSync(process.execPath, [mcpBin], {
     cwd: tmp,
-    shell: true,
     input: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
