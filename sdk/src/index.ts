@@ -77,6 +77,15 @@ export function parseFieldDecimal(
   modulus: bigint,
   label: string
 ): string {
+  if (
+    decStr === null ||
+    decStr === undefined ||
+    typeof decStr === "boolean" ||
+    typeof decStr === "object" ||
+    (typeof decStr === "number" && (!Number.isSafeInteger(decStr) || decStr < 0))
+  ) {
+    throw new VeilError("NON_CANONICAL_FIELD", `${label}: unsupported or unsafe numeric value`);
+  }
   if (typeof decStr === "string" && !/^(0|[1-9][0-9]*)$/.test(decStr)) {
     throw new VeilError("NON_CANONICAL_FIELD", `${label}: invalid decimal integer "${decStr}"`);
   }

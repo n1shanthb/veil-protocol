@@ -222,8 +222,12 @@ async function main() {
   if (cmd === "init") {
     const dir = args[1] || "./veil-project";
     const pkgPath = getArg("--pkgpath", "gno.land/r/<your-namespace>/my_verifier");
+    const gnomodDest = path.join(dir, "gnomod.toml");
+    if (fs.existsSync(gnomodDest) && !forceFlag) {
+      fail("EEXIST", `Refusing to overwrite existing "${gnomodDest}" without --force`);
+    }
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "gnomod.toml"), `module = "${pkgPath}"\ngno = "0.9"\n`);
+    fs.writeFileSync(gnomodDest, `module = "${pkgPath}"\ngno = "0.9"\n`);
     out({ ok: true, dir: path.resolve(dir), pkgPath }, `Initialized Gno project in ${dir}`);
     return;
   }
@@ -354,6 +358,9 @@ async function main() {
     const outPublic = getArg("--out-public", "public.json");
     if (!wasmPath || !zkeyPath || !inputPath) {
       fail("USAGE", "Usage: veil prove --wasm <circuit.wasm> --zkey <circuit.zkey> --input <input.json> [--out-proof proof.json] [--out-public public.json]");
+    }
+    if ((fs.existsSync(outProof) || fs.existsSync(outPublic)) && !forceFlag) {
+      fail("EEXIST", `Refusing to overwrite existing "${outProof}" or "${outPublic}" without --force`);
     }
     try {
       const inputObj = JSON.parse(fs.readFileSync(inputPath, "utf8"));
