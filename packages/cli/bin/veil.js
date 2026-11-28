@@ -4,7 +4,17 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 const { execFileSync } = require("child_process");
+
+function loadSdk() {
+  try {
+    return require("@veil-zk/sdk");
+  } catch {
+    return require(path.resolve(__dirname, "..", "..", "..", "sdk", "dist", "index.js"));
+  }
+}
+const sdk = loadSdk();
 
 const CORE_PKG = "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2";
 const REGISTRY_REALM = "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1";
@@ -251,30 +261,50 @@ async function main() {
     return;
   }
 
-  if (cmd === "verify") {
+  if (cmd === "encode") {
     const vkPath = getArg("--vk", args[1]);
     const proofPath = getArg("--proof", args[2]);
     const pubPath = getArg("--public", args[3]);
     if (!vkPath || !proofPath || !pubPath) {
-      fail("USAGE", "Usage: veil verify --vk <vk.json> --proof <proof.json> --public <public.json>");
+      fail("USAGE", "Usage: veil encode --vk <vk.json> --proof <proof.json> --public <public.json>");
     }
     try {
       const vk = JSON.parse(fs.readFileSync(vkPath, "utf8"));
       const proof = JSON.parse(fs.readFileSync(proofPath, "utf8"));
       const pub = JSON.parse(fs.readFileSync(pubPath, "utf8"));
-      const conv = validateVK(vk);
-      if (!Array.isArray(pub) || pub.length !== conv.nPublic) {
-        throw new Error(`Public input count (${Array.isArray(pub) ? pub.length : "invalid"}) != expected ${conv.nPublic}`);
+      const conv = sdk.validateAndConvertVK(vk);
+      const encProof = sdk.validateAndConvertProof(proof);
+      const inputs = sdk.encodePublicInputs(pub);
+      if (inputs.length !== conv.nPublic) {
+        throw new Error(`Public input count (${inputs.length}) != expected ${conv.nPublic}`);
       }
-      const a = parseFieldDec(proof.pi_a[0], BN254_P, "pi_a.x") + parseFieldDec(proof.pi_a[1], BN254_P, "pi_a.y");
-      const b =
-        parseFieldDec(proof.pi_b[0][1], BN254_P, "pi_b.x_imag") +
-        parseFieldDec(proof.pi_b[0][0], BN254_P, "pi_b.x_real") +
-        parseFieldDec(proof.pi_b[1][1], BN254_P, "pi_b.y_imag") +
-        parseFieldDec(proof.pi_b[1][0], BN254_P, "pi_b.y_real");
-      const c = parseFieldDec(proof.pi_c[0], BN254_P, "pi_c.x") + parseFieldDec(proof.pi_c[1], BN254_P, "pi_c.y");
-      const inputs = pub.map((v, i) => parseFieldDec(v, 21888242871839275222246405745257275088548364400416034343698204186575808495617n, `public[${i}]`));
-      out({ ok: true, validEncoding: true, a, b, c, inputs }, `VALID encoding (${inputs.length} public inputs)`);
+      out({ ok: true, ...encProof, inputs }, `Encoded proof (${inputs.length} public inputs)`);
+    } catch (e) {
+      fail("ENCODE_FAILED", e.message);
+    }
+    return;
+  }
+
+  if (cmd === "verify") {
+    const vkPath = getArg("--vk", args[1]);
+    const proofPath = getArg("--proof", args[2]);
+    const pubPath = getArg("--public", args[3]);
+    if (!vkPath || !proofPath || !pubPath) {
+      fail("USAGE", "Usage: veil verify [--local] --vk <vk.json> --proof <proof.json> --public <public.json>");
+    }
+    try {
+      const vk = JSON.parse(fs.readFileSync(vkPath, "utf8"));
+      const proof = JSON.parse(fs.readFileSync(proofPath, "utf8"));
+      const pub = JSON.parse(fs.readFileSync(pubPath, "utf8"));
+      const res = await sdk.verifyProofLocal(vk, proof, pub);
+      if (!res.valid) {
+        fail("INVALID_PROOF", "Groth16 cryptographic verification returned false");
+      }
+      out(
+        { ok: true, valid: true, a: res.encodedProof.a, b: res.encodedProof.b, c: res.encodedProof.c, inputs: res.encodedInputs },
+        `VALID Groth16 proof (${res.encodedInputs.length} public inputs)`
+      );
+      process.exit(0);
     } catch (e) {
       fail("INVALID_PROOF", e.message);
     }

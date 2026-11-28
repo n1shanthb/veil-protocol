@@ -2,6 +2,16 @@
 "use strict";
 
 const readline = require("readline");
+const path = require("path");
+
+function loadSdk() {
+  try {
+    return require("@veil-zk/sdk");
+  } catch {
+    return require(path.resolve(__dirname, "..", "..", "..", "sdk", "dist", "index.js"));
+  }
+}
+const sdk = loadSdk();
 
 const ONYX_RPC = "https://rpc.onyx.testnets.gno.land:443";
 const REGISTRY_REALM = "gno.land/r/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/veil_registry/v1";
@@ -32,10 +42,7 @@ const TOOLS = [
     description: "Generate a dry-run gnokey deployment command for a Gno verifier realm.",
     inputSchema: {
       type: "object",
-      properties: {
-        pkgPath: { type: "string" },
-        dir: { type: "string" },
-      },
+      properties: { pkgPath: { type: "string" }, dir: { type: "string" } },
       required: ["pkgPath", "dir"],
       additionalProperties: false,
     },
@@ -45,22 +52,28 @@ const TOOLS = [
     description: "Check whether a Gno package path is active on Onyx (vm/qfile).",
     inputSchema: {
       type: "object",
-      properties: {
-        pkgPath: { type: "string" },
-      },
+      properties: { pkgPath: { type: "string" } },
       required: ["pkgPath"],
       additionalProperties: false,
     },
   },
   {
     name: "veil_inspect_vk",
-    description: "Validate a snarkjs Groth16/BN254 verification_key.json object.",
+    description: "Validate a snarkjs Groth16/BN254 verification_key.json using @veil-zk/sdk.",
     inputSchema: {
       type: "object",
-      properties: {
-        vk: { type: "object" },
-      },
+      properties: { vk: { type: "object" } },
       required: ["vk"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "veil_generate_verifier",
+    description: "Generate Gno verifier realm source code from a snarkjs verification key.",
+    inputSchema: {
+      type: "object",
+      properties: { pkgPath: { type: "string" }, vk: { type: "object" } },
+      required: ["pkgPath", "vk"],
       additionalProperties: false,
     },
   },
@@ -69,11 +82,18 @@ const TOOLS = [
     description: "Validate and encode proof.json and public.json into EIP-197 Gno hex.",
     inputSchema: {
       type: "object",
-      properties: {
-        proof: { type: "object" },
-        publicInputs: { type: "array" },
-      },
+      properties: { proof: { type: "object" }, publicInputs: { type: "array" } },
       required: ["proof", "publicInputs"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "veil_verify_proof",
+    description: "Cryptographically verify a Groth16 proof locally using snarkjs via @veil-zk/sdk.",
+    inputSchema: {
+      type: "object",
+      properties: { vk: { type: "object" }, proof: { type: "object" }, publicInputs: { type: "array" } },
+      required: ["vk", "proof", "publicInputs"],
       additionalProperties: false,
     },
   },
@@ -84,8 +104,8 @@ async function handleTool(name, args) {
     return {
       protocol: "groth16",
       curve: "bn254",
-      maxPublicInputs: 64,
-      corePackage: "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",
+      maxPublicInputs: sdk.MAX_PUBLIC_INPUTS,
+      corePackage: sdk.CORE_PKG_PATH,
       semaphorePackage: "gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/semaphore/v2",
     };
   }
@@ -131,38 +151,34 @@ async function handleTool(name, args) {
     };
   }
   if (name === "veil_deployment_status") {
-    const pkgPath = String(args?.pkgPath || "").trim();
-    if (!/^gno\.land\/[pr]\/[a-zA-Z0-9_/-]+$/.test(pkgPath)) {
-      throw new Error("Invalid Gno package path");
-    }
-    const r = await fetch(ONYX_RPC.replace(":443", ""), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "abci_query", params: { path: "vm/qfile", data: Buffer.from(pkgPath).toString("base64") } }),
-    });
-    const j = await r.json();
-    const active = !j?.result?.response?.ResponseBase?.Error;
-    return { pkgPath, active };
+    return sdk.checkPackageActivation(String(args?.pkgPath || "").trim(), ONYX_RPC);
   }
   if (name === "veil_inspect_vk") {
-    const vk = args?.vk;
-    if (!vk || vk.protocol !== "groth16") throw new Error(`Unsupported protocol: ${vk?.protocol}`);
-    if (vk.curve !== "bn128" && vk.curve !== "bn254") throw new Error(`Unsupported curve: ${vk?.curve}`);
-    if (!Array.isArray(vk.IC) || vk.IC.length === 0) throw new Error("Missing IC array");
-    return { valid: true, protocol: "groth16", curve: "bn254", nPublic: vk.IC.length - 1 };
+    const conv = sdk.validateAndConvertVK(args?.vk);
+    return { valid: true, ...conv };
+  }
+  if (name === "veil_generate_verifier") {
+    const pkgPath = String(args?.pkgPath || "").trim();
+    const conv = sdk.validateAndConvertVK(args?.vk);
+    const source = sdk.generateGnoVerifierSource(pkgPath, conv);
+    return { pkgPath, nPublic: conv.nPublic, source };
   }
   if (name === "veil_encode_gno") {
-    const p = args?.proof;
-    const pub = args?.publicInputs;
-    if (!p?.pi_a || !p?.pi_b || !p?.pi_c || !Array.isArray(pub)) {
-      throw new Error("Invalid proof or publicInputs");
-    }
-    return { encoded: true, nPublic: pub.length, pi_a_len: p.pi_a.length };
+    const encodedProof = sdk.validateAndConvertProof(args?.proof);
+    const inputs = sdk.encodePublicInputs(args?.publicInputs);
+    return { ...encodedProof, inputs };
+  }
+  if (name === "veil_verify_proof") {
+    return sdk.verifyProofLocal(args?.vk, args?.proof, args?.publicInputs);
   }
   throw new Error(`Unknown tool: ${name}`);
 }
 
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
+let pending = 0;
+let closed = false;
+const maybeExit = () => { if (closed && pending === 0) process.exit(0); };
+
 rl.on("line", async (line) => {
   if (!line.trim()) return;
   let req;
@@ -171,6 +187,7 @@ rl.on("line", async (line) => {
   } catch {
     return;
   }
+  pending++;
   const send = (res) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, ...res }) + "\n");
   try {
     if (req.method === "initialize") {
@@ -185,5 +202,9 @@ rl.on("line", async (line) => {
     }
   } catch (e) {
     if (req.id !== undefined) send({ error: { code: -32000, message: e.message } });
+  } finally {
+    pending--;
+    maybeExit();
   }
 });
+rl.on("close", () => { closed = true; maybeExit(); });

@@ -32,6 +32,7 @@
     "@semaphore-protocol/proof": "4.13.0",
     "@types/node": "^26.6.11",
     "ethers": "^6.13.0",
+    "snarkjs": "^0.7.6",
     "typescript": "^7.0.2"
   },
   "license": "MIT"
