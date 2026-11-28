@@ -18,6 +18,7 @@ const VotePage = lazy(() => import("./pages/VotePage").then((m) => ({ default: m
 const SandboxPage = lazy(() => import("./pages/SandboxPage").then((m) => ({ default: m.SandboxPage })));
 const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
 const OperatorsPage = lazy(() => import("./pages/OperatorsPage").then((m) => ({ default: m.OperatorsPage })));
+const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage").then((m) => ({ default: m.IntegrationsPage })));
 
 function NotFoundPage() {
   return (
@@ -58,6 +59,7 @@ export function App() {
               <Route path="/docs" element={<AppShell />}>
                 <Route index element={<DocsPage />} />
                 <Route path="operators" element={<OperatorsPage />} />
+                <Route path="integrations" element={<IntegrationsPage />} />
               </Route>
               <Route path="*" element={<NotFoundPage />} />
             </Routes>

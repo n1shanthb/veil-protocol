@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     label: "Resources",
     items: [
       { to: "/docs", label: "Documentation" },
+      { to: "/docs/integrations", label: "CLI, SDK & Agents" },
       { to: "/docs/operators", label: "Operator Guide" },
     ],
   },
