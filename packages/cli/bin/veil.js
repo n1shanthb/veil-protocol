@@ -418,7 +418,12 @@ async function main() {
         fs.writeFileSync(path.join(isoDir, "verifier_test.gno"), testSrc);
       }
       fs.writeFileSync(path.join(isoDir, "gnowork.toml"), `[workspace]\nmembers = [\n  ".",\n  ".veil_core_tmp/gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",\n]\n`);
-      testOut = execFileSync(gnoBin, ["test", "-v", "."], { cwd: isoDir, encoding: "utf8", timeout: 30000 });
+      const { spawnSync } = require("child_process");
+      const res = spawnSync(gnoBin, ["test", "-v", "."], { cwd: isoDir, encoding: "utf8", timeout: 30000 });
+      testOut = (res.stdout || "") + (res.stderr || "");
+      if (res.status !== 0) {
+        throw new Error(res.error ? res.error.message : `gno test exited with ${res.status}\n${testOut}`);
+      }
     } catch (e) {
       testErr = e;
     } finally {
