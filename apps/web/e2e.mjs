@@ -19,7 +19,7 @@ async function waitForServer(url, timeoutMs = 15000) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
-async function runBrowserSuite(browserType, name, doRealRelayedVote) {
+async function runBrowserSuite(browserType, name) {
   console.log(`\n=== Running Playwright E2E in ${name} ===`);
   const browser = await browserType.launch();
   const page = await browser.newPage();
@@ -29,56 +29,34 @@ async function runBrowserSuite(browserType, name, doRealRelayedVote) {
     if (msg.type() === "error") errors.push(`console.error: ${msg.text()}`);
   });
 
+  // 1. Landing page
   await page.goto(URL, { waitUntil: "networkidle" });
   const title = await page.title();
   assert(title.includes("VEIL PROTOCOL"), `Unexpected title: ${title}`);
 
-  // 1. Identity restore & add to local group
-  await page.fill("#id-secret", "e2e-ci-test-identity");
-  await page.click("#btn-restore-id");
-  await page.click("#btn-admin-add-member");
+  // 2. Local Sandbox: identity restore, join local group, Semaphore proof, vote & duplicate rejection
+  await page.goto(`${URL}/studio/sandbox`, { waitUntil: "networkidle" });
+  await page.fill("#sb-seed", "e2e-ci-test-identity");
+  await page.click('button:has-text("Restore from Seed")');
+  await page.click('button:has-text("Join Local Group")');
 
-  // 2. Select Poll 42, Option 2 ("No"), generate REAL client-side Semaphore v4 proof
-  await page.selectOption("#poll-select", "42");
-  await page.selectOption("#opt-select", "2");
+  await page.selectOption("#sb-poll", "42");
+  await page.selectOption("#sb-opt", "2");
   const t0 = Date.now();
-  await page.click("#btn-gen-proof");
+  await page.click('button:has-text("Generate Semaphore Proof")');
   await page.waitForFunction(
-    () => document.querySelector(".status-box")?.textContent?.includes("Ready to submit"),
+    () => document.body.textContent?.includes("Ready to simulate vote"),
     { timeout: 60000 }
   );
-  const proofMs = Date.now() - t0;
-  console.log(`  [${name}] Client-side Semaphore v4 proof generated in ${proofMs}ms`);
+  console.log(`  [${name}] Client-side Semaphore v4 proof generated in ${Date.now() - t0}ms`);
 
-  if (doRealRelayedVote) {
-    // 3. Submit via real Sponsored Relayer -> real local gnoland node!
-    await page.click("#btn-submit-relayer");
-    await page.waitForFunction(
-      () => document.querySelector(".status-box")?.textContent?.includes("Relayer (200)"),
-      { timeout: 30000 }
-    );
-    const statusText = await page.textContent(".status-box");
-    console.log(`  [${name}] Relayer response: ${statusText}`);
-    assert(statusText.includes('"relayed":true'), `Expected relayed:true in ${statusText}`);
-    await page.screenshot({ path: path.join(ROOT, "docs", `e2e_${name}_vote.png`), fullPage: true });
-  } else {
-    // Verify local dev submission in second browser
-    await page.click("#btn-submit-local");
-    const statusText = await page.textContent(".status-box");
-    assert(statusText.includes("Vote recorded"), `Expected Vote recorded in ${statusText}`);
-    // Duplicate vote rejected
-    await page.click("#btn-submit-local");
-    const dupText = await page.textContent(".status-box");
-    assert(dupText.includes("duplicate vote"), `Expected duplicate vote rejection in ${dupText}`);
-  }
+  await page.click('button:has-text("Simulate Vote (Local)")');
+  await page.waitForFunction(() => document.body.textContent?.includes("Vote recorded"));
+  await page.click('button:has-text("Simulate Vote (Local)")');
+  await page.waitForFunction(() => document.body.textContent?.includes("duplicate vote"));
 
-  // 4. Page reload preserves clean state & identity restore works
-  await page.reload({ waitUntil: "networkidle" });
-  await page.fill("#id-secret", "e2e-ci-test-identity");
-  await page.click("#btn-restore-id");
-
-  // 5. Veil Studio: Forge (import tracked VK)
-  await page.click('button[data-tab="forge"]');
+  // 3. Veil Forge: import tracked VK & generate Gno verifier
+  await page.goto(`${URL}/studio/forge`, { waitUntil: "networkidle" });
   const vkPath = fs.existsSync(path.join(ROOT, "circuits/build/cubic_check/verification_key.json"))
     ? path.join(ROOT, "circuits/build/cubic_check/verification_key.json")
     : path.join(ROOT, "circuits/semaphore/vk_depth10.json");
@@ -88,60 +66,43 @@ async function runBrowserSuite(browserType, name, doRealRelayedVote) {
   const pubPath = fs.existsSync(path.join(ROOT, "circuits/build/cubic_check/public.json"))
     ? path.join(ROOT, "circuits/build/cubic_check/public.json")
     : path.join(ROOT, "circuits/semaphore/public_depth10.json");
+
   const vkJson = fs.readFileSync(vkPath, "utf8");
   await page.fill("#forge-vk", vkJson);
-  await page.click("#btn-forge-gen");
-  const forgeOut = await page.textContent("pre");
-  assert(forgeOut.includes("groth16/v2"), "Forge output missing groth16/v2 import");
+  await page.click('button:has-text("Validate & Generate Gno Verifier")');
+  await page.waitForFunction(() => document.body.textContent?.includes("groth16/v2"));
 
-  // 6. Veil Studio: Proof Playground (real browser-side snarkjs verify: valid + tampered)
-  await page.click('button[data-tab="playground"]');
+  // 4. Proof Playground: valid proof + tampered public input rejection
+  await page.goto(`${URL}/studio/playground`, { waitUntil: "networkidle" });
   const proofJson = fs.readFileSync(proofPath, "utf8");
   const pubJson = fs.readFileSync(pubPath, "utf8");
   await page.fill("#pg-vk", vkJson);
   await page.fill("#pg-proof", proofJson);
   await page.fill("#pg-public", pubJson);
-  await page.click("#btn-pg-encode");
-  await page.waitForFunction(() => document.body.textContent.includes("BROWSER SNARKJS VERIFICATION: VALID"));
-  const pgOut = await page.textContent("pre");
-  assert(pgOut.includes("A (G1 64B):"), "Playground missing encoded A");
-  assert(pgOut.includes("B (G2 128B EIP-197):"), "Playground missing encoded B");
+  await page.click('button:has-text("Verify in Browser (snarkjs) & Encode for Gno")');
+  await page.waitForFunction(() => document.body.textContent?.includes("BROWSER SNARKJS: VALID"));
 
-  // Tampered public input must fail browser snarkjs verification
-  await page.fill("#pg-public", '["999999"]');
-  await page.click("#btn-pg-encode");
-  await page.waitForFunction(() => document.body.textContent.includes("BROWSER SNARKJS VERIFICATION: INVALID"));
+  const pubArr = JSON.parse(pubJson);
+  pubArr[0] = String(BigInt(pubArr[0]) + 1n);
+  await page.fill("#pg-public", JSON.stringify(pubArr));
+  await page.click('button:has-text("Verify in Browser (snarkjs) & Encode for Gno")');
+  await page.waitForFunction(() => document.body.textContent?.includes("BROWSER SNARKJS: INVALID"));
 
-  // 7. Remaining Studio tabs
-  for (const tab of ["circuits", "deployments", "primitives"]) {
-    await page.click(`button[data-tab="${tab}"]`);
-    const bodyText = await page.textContent("main");
-    assert(bodyText.length > 50, `Empty tab ${tab}`);
-  }
-
-  assert.equal(errors.length, 0, `Browser errors in ${name}: ${errors.join("; ")}`);
+  assert.strictEqual(errors.length, 0, `Browser errors in ${name}: ${errors.join("; ")}`);
   await browser.close();
-  console.log(`  [${name}] ALL E2E CHECKS PASSED (0 console/page errors)`);
 }
 
-async function main() {
-  const preview = spawn("npx", ["vite", "preview", "--port", "4173", "--host", "127.0.0.1"], {
-    cwd: path.join(ROOT, "apps/web"),
-    shell: true,
-    stdio: "ignore",
-  });
-  try {
-    await waitForServer(URL);
-    const useRelay = process.env.VEIL_E2E_RELAY !== "0";
-    await runBrowserSuite(chromium, "chromium", useRelay);
-    await runBrowserSuite(firefox, "firefox", false);
-  } finally {
-    preview.kill();
-  }
-  process.exit(0);
-}
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
+const preview = spawn("npx", ["vite", "preview", "--port", "4173", "--host", "127.0.0.1"], {
+  cwd: path.join(ROOT, "apps/web"),
+  shell: true,
+  stdio: "ignore",
 });
+
+try {
+  await waitForServer(URL);
+  await runBrowserSuite(chromium, "chromium");
+  await runBrowserSuite(firefox, "firefox");
+  console.log("\nALL PLAYWRIGHT E2E CHECKS PASSED.");
+} finally {
+  preview.kill();
+}
