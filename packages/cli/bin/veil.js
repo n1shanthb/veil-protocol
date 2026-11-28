@@ -363,6 +363,15 @@ async function main() {
       fail("EEXIST", `Refusing to overwrite existing "${outProof}" or "${outPublic}" without --force`);
     }
     try {
+      for (const [label, filePath] of [["wasm", wasmPath], ["zkey", zkeyPath]]) {
+        const base = path.basename(filePath);
+        if (PINNED_MULTIPLIER_SHA256[base]) {
+          const actual = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+          if (actual !== PINNED_MULTIPLIER_SHA256[base]) {
+            throw new Error(`SHA-256 checksum mismatch for ${label} (${base})`);
+          }
+        }
+      }
       const inputObj = JSON.parse(fs.readFileSync(inputPath, "utf8"));
       const snarkjs = require("snarkjs");
       const { proof, publicSignals } = await snarkjs.groth16.fullProve(inputObj, wasmPath, zkeyPath);
@@ -387,6 +396,8 @@ async function main() {
     const coreSrc = path.resolve(__dirname, "..", "gno", "groth16_v2");
     const isoDir = fs.mkdtempSync(path.join(os.tmpdir(), "veil-gno-test-"));
     const tmpCore = path.join(isoDir, ".veil_core_tmp", "gno.land", "p", "g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04", "groth16", "v2");
+    let testOut = "";
+    let testErr = null;
     try {
       fs.mkdirSync(tmpCore, { recursive: true });
       for (const f of fs.readdirSync(coreSrc)) {
@@ -407,13 +418,16 @@ async function main() {
         fs.writeFileSync(path.join(isoDir, "verifier_test.gno"), testSrc);
       }
       fs.writeFileSync(path.join(isoDir, "gnowork.toml"), `[workspace]\nmembers = [\n  ".",\n  ".veil_core_tmp/gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",\n]\n`);
-      const testOut = execFileSync(gnoBin, ["test", "-v", "."], { cwd: isoDir, encoding: "utf8", timeout: 30000 });
-      out({ ok: true, dir: path.resolve(dir), output: testOut }, testOut);
+      testOut = execFileSync(gnoBin, ["test", "-v", "."], { cwd: isoDir, encoding: "utf8", timeout: 30000 });
     } catch (e) {
-      fail("GNO_TEST_FAILED", e.message);
+      testErr = e;
     } finally {
       fs.rmSync(isoDir, { recursive: true, force: true });
     }
+    if (testErr) {
+      fail("GNO_TEST_FAILED", testErr.message);
+    }
+    out({ ok: true, dir: path.resolve(dir), output: testOut }, testOut);
     return;
   }
 

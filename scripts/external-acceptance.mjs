@@ -55,14 +55,11 @@ try {
   assert.equal(gen.ok, true);
   console.log("6. generate Gno verifier: PASS");
 
-  // 9. Compile and test in GnoVM if gno is available
-  if (doc.gno) {
-    const gnoRes = JSON.parse(npx("veil test --dir ./ver --proof ./fresh_proof.json --public ./fresh_public.json --json"));
-    assert.equal(gnoRes.ok, true);
-    console.log("7. GnoVM test: PASS");
-  } else {
-    console.log("7. GnoVM test: SKIPPED (gno binary not found)");
-  }
+  // 9. Compile and test in GnoVM (mandatory)
+  const gnoRes = JSON.parse(npx("veil test --dir ./ver --proof ./fresh_proof.json --public ./fresh_public.json --json"));
+  assert.equal(gnoRes.ok, true);
+  assert.ok(gnoRes.output.includes("TestVerifyGeneratedProof"));
+  console.log("7. GnoVM test: PASS");
 
   // 10. Prepare deployment
   const dep = JSON.parse(npx("veil deploy ./ver --pkgpath gno.land/r/test/ver --dry-run --json"));
