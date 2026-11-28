@@ -45,5 +45,22 @@ test("CLI genuine Groth16 verify, encode, and mathematical rejection", () => {
   assert.equal(genOut.ok, true);
   assert.ok(fs.existsSync(path.join(verDir, "verifier.gno")));
 
+  // 5. Overwrite protection without --force
+  assert.throws(() => execFileSync("node", [CLI, "circuits", "pull", "multiplier", "--out", artDir, "--json"], { encoding: "utf8" }));
+  assert.throws(() => execFileSync("node", [CLI, "generate", vk, "--out", verDir, "--pkgpath", "gno.land/r/test/mult", "--json"], { encoding: "utf8" }));
+
+  // 6. Path traversal & unknown circuit rejection
+  assert.throws(() => execFileSync("node", [CLI, "circuits", "pull", "multiplier", "--out", "../escape", "--json"], { encoding: "utf8" }));
+  assert.throws(() => execFileSync("node", [CLI, "circuits", "pull", "unknown_circuit", "--out", artDir, "--json"], { encoding: "utf8" }));
+
+  // 7. Unsupported --onchain rejection
+  assert.throws(() => execFileSync("node", [CLI, "verify", "--onchain", "--vk", vk, "--proof", proof, "--public", pub, "--json"], { encoding: "utf8" }));
+
+  // 8. Existing user verifier_test.gno survives veil test
+  const userTestFile = path.join(verDir, "verifier_test.gno");
+  fs.writeFileSync(userTestFile, "// user-owned test\n");
+  execFileSync("node", [CLI, "test", "--dir", verDir, "--proof", proof, "--public", pub, "--json"], { encoding: "utf8" });
+  assert.equal(fs.readFileSync(userTestFile, "utf8"), "// user-owned test\n");
+
   fs.rmSync(tmp, { recursive: true, force: true });
 });

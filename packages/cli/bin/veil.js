@@ -22,9 +22,18 @@ const ONYX_RPC = "https://rpc.onyx.testnets.gno.land:443";
 const BN254_P = 21888242871839275222246405745257275088696311157297823662689037894645226208583n;
 const MAX_PUBLIC_INPUTS = 64;
 
+const PINNED_MULTIPLIER_SHA256 = {
+  "multiplier.wasm": "727bb80db099f327bbc2cdcfd59dfd9956743623cdb7bd29f8c83479dad40784",
+  "multiplier_final.zkey": "4ec444e2ab0c23fdf33e36a128740060ade74e1afbd6e68ad04403e22cf9acd0",
+  "proof.json": "f7f2a23974cf3f67b2304873d1541eb0e7a97e5d22d7c1a6ee94bedef789e1a7",
+  "public.json": "b8aa8302d2caaa8621aff7575726eff722d7c15997d8ed59a89bd94e1c757272",
+  "verification_key.json": "565bd751471d2d49bcb969dba6dc8fc3e0886e0759313905ffd1f90bbf19fcf8",
+};
+
 const args = process.argv.slice(2);
 const jsonFlag = args.includes("--json");
 const dryRun = args.includes("--dry-run");
+const forceFlag = args.includes("--force");
 const cmd = args.find((a) => !a.startsWith("-")) || "help";
 
 function out(data, text) {
@@ -135,15 +144,31 @@ async function main() {
     const sub = args[1];
     if (sub === "pull") {
       const id = args[2] || "multiplier";
+      if (!/^[a-zA-Z0-9_-]+$/.test(id) || id !== "multiplier") {
+        fail("UNKNOWN_CIRCUIT", `Unknown or unbundled circuit "${id}". Only "multiplier" is bundled in v0.1.0.`);
+      }
       const outDir = getArg("--out", `./${id}`);
+      if (outDir.includes("..")) {
+        fail("PATH_TRAVERSAL", `Refusing path traversal in --out "${outDir}"`);
+      }
       const srcDir = path.resolve(__dirname, "..", "artifacts", id);
       if (!fs.existsSync(srcDir)) fail("ENOENT", `Bundled artifacts not found for circuit "${id}"`);
       fs.mkdirSync(outDir, { recursive: true });
       const files = fs.readdirSync(srcDir);
       for (const f of files) {
-        fs.copyFileSync(path.join(srcDir, f), path.join(outDir, f));
+        const dest = path.join(outDir, f);
+        if (fs.existsSync(dest) && !forceFlag) {
+          fail("EEXIST", `Refusing to overwrite existing file "${dest}" without --force`);
+        }
+        const buf = fs.readFileSync(path.join(srcDir, f));
+        const actualHash = crypto.createHash("sha256").update(buf).digest("hex");
+        const expectedHash = PINNED_MULTIPLIER_SHA256[f];
+        if (!expectedHash || actualHash !== expectedHash) {
+          fail("CHECKSUM_MISMATCH", `SHA-256 mismatch for ${f}: expected ${expectedHash}, got ${actualHash}`);
+        }
+        fs.writeFileSync(dest, buf);
       }
-      out({ ok: true, circuit: id, outDir: path.resolve(outDir), files }, `Pulled ${files.length} artifact(s) for ${id} to ${outDir}`);
+      out({ ok: true, circuit: id, outDir: path.resolve(outDir), files, sha256: PINNED_MULTIPLIER_SHA256 }, `Pulled ${files.length} verified artifact(s) for ${id} to ${outDir}`);
       return;
     }
     const list = [
@@ -179,9 +204,14 @@ async function main() {
       const vk = JSON.parse(fs.readFileSync(vkPath, "utf8"));
       const conv = sdk.validateAndConvertVK(vk);
       const src = sdk.generateGnoVerifierSource(pkgPath, conv);
+      const gnomodDest = path.join(outDir, "gnomod.toml");
+      const verifierDest = path.join(outDir, "verifier.gno");
+      if ((fs.existsSync(gnomodDest) || fs.existsSync(verifierDest)) && !forceFlag) {
+        fail("EEXIST", `Refusing to overwrite existing verifier files in "${outDir}" without --force`);
+      }
       fs.mkdirSync(outDir, { recursive: true });
-      fs.writeFileSync(path.join(outDir, "gnomod.toml"), `module = "${pkgPath}"\ngno = "0.9"\n`);
-      fs.writeFileSync(path.join(outDir, "verifier.gno"), src);
+      fs.writeFileSync(gnomodDest, `module = "${pkgPath}"\ngno = "0.9"\n`);
+      fs.writeFileSync(verifierDest, src);
       out({ ok: true, outDir: path.resolve(outDir), pkgPath, nPublic: conv.nPublic }, `Generated ${path.join(outDir, "verifier.gno")} and gnomod.toml`);
     } catch (e) {
       fail("GENERATE_FAILED", e.message);
@@ -288,6 +318,9 @@ async function main() {
   }
 
   if (cmd === "verify") {
+    if (args.includes("--onchain")) {
+      fail("UNSUPPORTED_MODE", "--onchain verification is not supported in v0.1.0 CLI; use --local or gnokey maketx call.");
+    }
     const vkPath = getArg("--vk", args[1]);
     const proofPath = getArg("--proof", args[2]);
     const pubPath = getArg("--public", args[3]);
@@ -345,35 +378,34 @@ async function main() {
       fail("GNO_NOT_FOUND", "gno binary not found in PATH or E:\\toolchains\\bin", "Install gno v1.8.0-rc.1 to run local GnoVM tests.");
     }
     const coreSrc = path.resolve(__dirname, "..", "gno", "groth16_v2");
-    const tmpBase = path.join(dir, ".veil_core_tmp");
-    const tmpCore = path.join(tmpBase, "gno.land", "p", "g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04", "groth16", "v2");
-    fs.mkdirSync(tmpCore, { recursive: true });
-    for (const f of fs.readdirSync(coreSrc)) {
-      fs.copyFileSync(path.join(coreSrc, f), path.join(tmpCore, f));
-    }
-    if (proofPath && pubPath) {
-      const proof = JSON.parse(fs.readFileSync(proofPath, "utf8"));
-      const pub = JSON.parse(fs.readFileSync(pubPath, "utf8"));
-      const encProof = sdk.validateAndConvertProof(proof);
-      const inputs = sdk.encodePublicInputs(pub);
-      const pkgLine = fs.readFileSync(path.join(dir, "verifier.gno"), "utf8").match(/^package\s+(\w+)/m);
-      const pkgName = pkgLine ? pkgLine[1] : "verifier";
-      const testSrc = `package ${pkgName}\n\nimport (\n\t"testing"\n\n\t"${CORE_PKG}"\n)\n\nfunc TestVerifyGeneratedProof(t *testing.T) {\n\tproof, err := groth16.ParseProofHex("${encProof.a}", "${encProof.b}", "${encProof.c}")\n\tif err != nil {\n\t\tt.Fatalf("parse proof failed: %v", err)\n\t}\n\tinputs, err := groth16.ParsePublicInputsHex(splitCSV("${inputs.join(",")}"))\n\tif err != nil {\n\t\tt.Fatalf("parse inputs failed: %v", err)\n\t}\n\tif err := groth16.Verify(vk, proof, inputs); err != nil {\n\t\tt.Fatalf("verify failed: %v", err)\n\t}\n}\n`;
-      fs.writeFileSync(path.join(dir, "verifier_test.gno"), testSrc);
-    }
-    const gnoworkPath = path.join(dir, "gnowork.toml");
-    const hadGnowork = fs.existsSync(gnoworkPath);
-    if (!hadGnowork) {
-      fs.writeFileSync(gnoworkPath, `[workspace]\nmembers = [\n  ".",\n  ".veil_core_tmp/gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",\n]\n`);
-    }
+    const isoDir = fs.mkdtempSync(path.join(os.tmpdir(), "veil-gno-test-"));
+    const tmpCore = path.join(isoDir, ".veil_core_tmp", "gno.land", "p", "g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04", "groth16", "v2");
     try {
-      const testOut = execFileSync(gnoBin, ["test", "-v", "."], { cwd: dir, encoding: "utf8" });
-      out({ ok: true, dir, output: testOut }, testOut);
+      fs.mkdirSync(tmpCore, { recursive: true });
+      for (const f of fs.readdirSync(coreSrc)) {
+        fs.copyFileSync(path.join(coreSrc, f), path.join(tmpCore, f));
+      }
+      for (const f of ["gnomod.toml", "verifier.gno"]) {
+        const srcF = path.join(dir, f);
+        if (fs.existsSync(srcF)) fs.copyFileSync(srcF, path.join(isoDir, f));
+      }
+      if (proofPath && pubPath) {
+        const proof = JSON.parse(fs.readFileSync(proofPath, "utf8"));
+        const pub = JSON.parse(fs.readFileSync(pubPath, "utf8"));
+        const encProof = sdk.validateAndConvertProof(proof);
+        const inputs = sdk.encodePublicInputs(pub);
+        const pkgLine = fs.readFileSync(path.join(isoDir, "verifier.gno"), "utf8").match(/^package\s+(\w+)/m);
+        const pkgName = pkgLine ? pkgLine[1] : "verifier";
+        const testSrc = `package ${pkgName}\n\nimport (\n\t"testing"\n\n\t"${CORE_PKG}"\n)\n\nfunc TestVerifyGeneratedProof(t *testing.T) {\n\tproof, err := groth16.ParseProofHex("${encProof.a}", "${encProof.b}", "${encProof.c}")\n\tif err != nil {\n\t\tt.Fatalf("parse proof failed: %v", err)\n\t}\n\tinputs, err := groth16.ParsePublicInputsHex(splitCSV("${inputs.join(",")}"))\n\tif err != nil {\n\t\tt.Fatalf("parse inputs failed: %v", err)\n\t}\n\tif err := groth16.Verify(vk, proof, inputs); err != nil {\n\t\tt.Fatalf("verify failed: %v", err)\n\t}\n}\n`;
+        fs.writeFileSync(path.join(isoDir, "verifier_test.gno"), testSrc);
+      }
+      fs.writeFileSync(path.join(isoDir, "gnowork.toml"), `[workspace]\nmembers = [\n  ".",\n  ".veil_core_tmp/gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",\n]\n`);
+      const testOut = execFileSync(gnoBin, ["test", "-v", "."], { cwd: isoDir, encoding: "utf8", timeout: 30000 });
+      out({ ok: true, dir: path.resolve(dir), output: testOut }, testOut);
     } catch (e) {
       fail("GNO_TEST_FAILED", e.message);
     } finally {
-      fs.rmSync(tmpBase, { recursive: true, force: true });
-      if (!hadGnowork) fs.rmSync(gnoworkPath, { force: true });
+      fs.rmSync(isoDir, { recursive: true, force: true });
     }
     return;
   }
