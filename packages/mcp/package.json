@@ -17,5 +17,8 @@
     "url": "https://github.com/n1shanthb/veil-protocol.git",
     "directory": "packages/mcp"
   },
+  "dependencies": {
+    "@veil-zk/sdk": "^0.1.0"
+  },
   "license": "MIT"
 }
