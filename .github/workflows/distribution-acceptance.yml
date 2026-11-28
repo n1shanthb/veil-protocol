@@ -25,7 +25,11 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.8.0-rc.1 https://github.com/gnolang/gno.git /tmp/gno-src
           cd /tmp/gno-src/gnovm/cmd/gno && go install .
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          GOBIN_DIR="$(go env GOPATH)/bin"
+          if command -v cygpath >/dev/null 2>&1; then
+            GOBIN_DIR="$(cygpath -w "$GOBIN_DIR")"
+          fi
+          echo "$GOBIN_DIR" >> "$GITHUB_PATH"
       - run: cd sdk && npm ci && npm run build && npm test
       - run: node --test ./packages/cli/test/cli.test.mjs ./packages/mcp/test/mcp.test.mjs
       - name: Run external acceptance
