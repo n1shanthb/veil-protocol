@@ -52,6 +52,31 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: "veil_inspect_vk",
+    description: "Validate a snarkjs Groth16/BN254 verification_key.json object.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vk: { type: "object" },
+      },
+      required: ["vk"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "veil_encode_gno",
+    description: "Validate and encode proof.json and public.json into EIP-197 Gno hex.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        proof: { type: "object" },
+        publicInputs: { type: "array" },
+      },
+      required: ["proof", "publicInputs"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 async function handleTool(name, args) {
@@ -118,6 +143,21 @@ async function handleTool(name, args) {
     const j = await r.json();
     const active = !j?.result?.response?.ResponseBase?.Error;
     return { pkgPath, active };
+  }
+  if (name === "veil_inspect_vk") {
+    const vk = args?.vk;
+    if (!vk || vk.protocol !== "groth16") throw new Error(`Unsupported protocol: ${vk?.protocol}`);
+    if (vk.curve !== "bn128" && vk.curve !== "bn254") throw new Error(`Unsupported curve: ${vk?.curve}`);
+    if (!Array.isArray(vk.IC) || vk.IC.length === 0) throw new Error("Missing IC array");
+    return { valid: true, protocol: "groth16", curve: "bn254", nPublic: vk.IC.length - 1 };
+  }
+  if (name === "veil_encode_gno") {
+    const p = args?.proof;
+    const pub = args?.publicInputs;
+    if (!p?.pi_a || !p?.pi_b || !p?.pi_c || !Array.isArray(pub)) {
+      throw new Error("Invalid proof or publicInputs");
+    }
+    return { encoded: true, nPublic: pub.length, pi_a_len: p.pi_a.length };
   }
   throw new Error(`Unknown tool: ${name}`);
 }

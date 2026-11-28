@@ -9,6 +9,7 @@
     "bin",
     "skills",
     "artifacts",
+    "gno",
     "README.md"
   ],
   "engines": {
