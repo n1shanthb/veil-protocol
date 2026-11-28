@@ -89,6 +89,10 @@ function validateVK(vk) {
 }
 
 function whichBin(name) {
+  const localWin = `E:\\toolchains\\bin\\${name}.exe`;
+  if (process.platform === "win32" && fs.existsSync(localWin)) {
+    return localWin;
+  }
   try {
     const cmdName = process.platform === "win32" ? "where" : "which";
     return execFileSync(cmdName, [name], { encoding: "utf8" }).trim().split(/\r?\n/)[0];
@@ -309,23 +313,67 @@ async function main() {
     return;
   }
 
+  if (cmd === "prove") {
+    const wasmPath = getArg("--wasm", null);
+    const zkeyPath = getArg("--zkey", null);
+    const inputPath = getArg("--input", null);
+    const outProof = getArg("--out-proof", "proof.json");
+    const outPublic = getArg("--out-public", "public.json");
+    if (!wasmPath || !zkeyPath || !inputPath) {
+      fail("USAGE", "Usage: veil prove --wasm <circuit.wasm> --zkey <circuit.zkey> --input <input.json> [--out-proof proof.json] [--out-public public.json]");
+    }
+    try {
+      const inputObj = JSON.parse(fs.readFileSync(inputPath, "utf8"));
+      const snarkjs = require("snarkjs");
+      const { proof, publicSignals } = await snarkjs.groth16.fullProve(inputObj, wasmPath, zkeyPath);
+      fs.writeFileSync(outProof, JSON.stringify(proof, null, 2));
+      fs.writeFileSync(outPublic, JSON.stringify(publicSignals, null, 2));
+      out({ ok: true, outProof, outPublic, publicSignals }, `Generated proof (${outProof}) and public signals (${outPublic})`);
+      process.exit(0);
+    } catch (e) {
+      fail("PROVE_FAILED", e.message);
+    }
+    return;
+  }
+
   if (cmd === "test") {
     const dir = getArg("--dir", ".");
+    const proofPath = getArg("--proof", null);
+    const pubPath = getArg("--public", null);
     const gnoBin = whichBin("gno");
     if (!gnoBin) {
-      fail("GNO_NOT_FOUND", "gno binary not found in PATH", "Install gno v1.8.0-rc.1 to run local GnoVM tests.");
+      fail("GNO_NOT_FOUND", "gno binary not found in PATH or E:\\toolchains\\bin", "Install gno v1.8.0-rc.1 to run local GnoVM tests.");
     }
     const coreSrc = path.resolve(__dirname, "..", "gno", "groth16_v2");
-    const tmpCore = path.join(dir, ".veil_core_tmp", "groth16_v2");
+    const tmpBase = path.join(dir, ".veil_core_tmp");
+    const tmpCore = path.join(tmpBase, "gno.land", "p", "g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04", "groth16", "v2");
     fs.mkdirSync(tmpCore, { recursive: true });
     for (const f of fs.readdirSync(coreSrc)) {
       fs.copyFileSync(path.join(coreSrc, f), path.join(tmpCore, f));
     }
+    if (proofPath && pubPath) {
+      const proof = JSON.parse(fs.readFileSync(proofPath, "utf8"));
+      const pub = JSON.parse(fs.readFileSync(pubPath, "utf8"));
+      const encProof = sdk.validateAndConvertProof(proof);
+      const inputs = sdk.encodePublicInputs(pub);
+      const pkgLine = fs.readFileSync(path.join(dir, "verifier.gno"), "utf8").match(/^package\s+(\w+)/m);
+      const pkgName = pkgLine ? pkgLine[1] : "verifier";
+      const testSrc = `package ${pkgName}\n\nimport (\n\t"testing"\n\n\t"${CORE_PKG}"\n)\n\nfunc TestVerifyGeneratedProof(t *testing.T) {\n\tproof, err := groth16.ParseProofHex("${encProof.a}", "${encProof.b}", "${encProof.c}")\n\tif err != nil {\n\t\tt.Fatalf("parse proof failed: %v", err)\n\t}\n\tinputs, err := groth16.ParsePublicInputsHex(splitCSV("${inputs.join(",")}"))\n\tif err != nil {\n\t\tt.Fatalf("parse inputs failed: %v", err)\n\t}\n\tif err := groth16.Verify(vk, proof, inputs); err != nil {\n\t\tt.Fatalf("verify failed: %v", err)\n\t}\n}\n`;
+      fs.writeFileSync(path.join(dir, "verifier_test.gno"), testSrc);
+    }
+    const gnoworkPath = path.join(dir, "gnowork.toml");
+    const hadGnowork = fs.existsSync(gnoworkPath);
+    if (!hadGnowork) {
+      fs.writeFileSync(gnoworkPath, `[workspace]\nmembers = [\n  ".",\n  ".veil_core_tmp/gno.land/p/g1c3m9uesphlhmj6fkx6nsh3fvhw8apqyjwyhe04/groth16/v2",\n]\n`);
+    }
     try {
-      const testOut = execFileSync(gnoBin, ["test", "-v", dir], { encoding: "utf8" });
+      const testOut = execFileSync(gnoBin, ["test", "-v", "."], { cwd: dir, encoding: "utf8" });
       out({ ok: true, dir, output: testOut }, testOut);
     } catch (e) {
       fail("GNO_TEST_FAILED", e.message);
+    } finally {
+      fs.rmSync(tmpBase, { recursive: true, force: true });
+      if (!hadGnowork) fs.rmSync(gnoworkPath, { force: true });
     }
     return;
   }

@@ -1,0 +1,21 @@
+name: Distribution Acceptance
+
+on:
+  push:
+    branches: [feature/developer-distribution, main]
+  pull_request:
+
+jobs:
+  acceptance:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: cd sdk && npm ci && npm run build && npm test
+      - run: node --test ./packages/cli/test/cli.test.mjs ./packages/mcp/test/mcp.test.mjs
+      - run: node ./scripts/external-acceptance.mjs
